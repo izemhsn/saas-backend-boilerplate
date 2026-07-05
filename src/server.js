@@ -1,6 +1,6 @@
 import app from './app.js'
 
-const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET']
+const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET']
 const missing = REQUIRED_ENV.filter((key) => !process.env[key])
 if (missing.length) {
   console.error(`Missing required env vars: ${missing.join(', ')}`)

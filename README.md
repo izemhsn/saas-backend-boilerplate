@@ -80,12 +80,17 @@ The server runs at `http://localhost:3000` by default, or the port set in `.env`
 |---|---|---|---|
 | `POST` | `/api/auth/register` | No | Register — returns JWT + email verification token |
 | `POST` | `/api/auth/login` | No | Login — returns JWT |
-| `POST` | `/api/auth/refresh` | No | Re-sign JWT from a valid token |
+| `POST` | `/api/auth/refresh` | No | Exchange a refresh token for a new JWT + rotated refresh token |
 | `POST` | `/api/auth/verify-email` | No | Verify email with token from registration |
+| `POST` | `/api/auth/resend-verification` | No | Issue a new email verification token |
+| `POST` | `/api/auth/forgot-password` | No | Issue a password reset token (1h expiry) |
+| `POST` | `/api/auth/reset-password` | No | Reset password using a valid reset token |
 | `POST` | `/api/auth/change-password` | Yes | Change password (requires current password) |
 | `POST` | `/api/auth/change-email` | Yes | Change email (requires password, returns new JWT) |
-| `POST` | `/api/auth/logout` | Yes | Logout (stateless — invalidate client-side) |
+| `POST` | `/api/auth/logout` | Yes | Logout (invalidates stored refresh token) |
 | `GET` | `/api/auth/me` | Yes | Get current user profile |
+
+Refresh tokens rotate on every use: `POST /api/auth/refresh` invalidates the submitted refresh token and returns a new one alongside the new access token.
 
 Protected routes require `Authorization: Bearer <token>`.
 

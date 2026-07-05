@@ -19,7 +19,7 @@ export const register = async ({ name, email, password }) => {
   const emailVerificationToken = randomBytes(32).toString('hex')
 
   const user = await prisma.user.create({
-    data: { name, email, password: await hashPassword(password), emailVerificationToken },
+    data: { name, email, password: await hashPassword(password), emailVerificationToken: hashToken(emailVerificationToken) },
     select: userSelect,
   })
 
@@ -33,7 +33,7 @@ export const register = async ({ name, email, password }) => {
     user,
     token: signToken({ id: user.id, email: user.email, role: user.role }),
     refreshToken,
-    emailVerificationToken,
+    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
 }
 
@@ -70,11 +70,21 @@ export const refresh = async ({ refreshToken }) => {
   })
   if (!user) throw httpError('Invalid refresh token', 401)
 
-  return { token: signToken({ id: user.id, email: user.email, role: user.role }) }
+  // Rotate: issue a brand-new refresh token and invalidate the old one
+  const newRefreshToken = signRefreshToken({ sub: user.id })
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { refreshToken: hashToken(newRefreshToken) },
+  })
+
+  return {
+    token: signToken({ id: user.id, email: user.email, role: user.role }),
+    refreshToken: newRefreshToken,
+  }
 }
 
 export const verifyEmail = async ({ token }) => {
-  const user = await prisma.user.findUnique({ where: { emailVerificationToken: token } })
+  const user = await prisma.user.findUnique({ where: { emailVerificationToken: hashToken(token) } })
   if (!user) throw httpError('Invalid or expired verification token', 400)
   if (user.emailVerified) {
     return { message: 'Email already verified' }
@@ -86,12 +96,81 @@ export const verifyEmail = async ({ token }) => {
   return { message: 'Email verified successfully' }
 }
 
+export const resendVerification = async ({ email }) => {
+  const user = await prisma.user.findUnique({ where: { email } })
+
+  // Don't reveal whether the account exists or is already verified
+  if (!user || user.emailVerified) {
+    return { message: 'If that account needs verification, a new token has been issued.' }
+  }
+
+  const emailVerificationToken = randomBytes(32).toString('hex')
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { emailVerificationToken: hashToken(emailVerificationToken) },
+  })
+
+  return {
+    message: 'If that account needs verification, a new token has been issued.',
+    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+  }
+}
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
+
+export const forgotPassword = async ({ email }) => {
+  const user = await prisma.user.findUnique({ where: { email } })
+
+  // Don't reveal whether the email exists
+  if (!user) {
+    return { message: 'If that account exists, a password reset token has been issued.' }
+  }
+
+  const resetToken = randomBytes(32).toString('hex')
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetToken: hashToken(resetToken),
+      passwordResetExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+    },
+  })
+
+  return {
+    message: 'If that account exists, a password reset token has been issued.',
+    ...(process.env.NODE_ENV !== 'production' && { resetToken }),
+  }
+}
+
+export const resetPassword = async ({ token, newPassword }) => {
+  const user = await prisma.user.findUnique({
+    where: { passwordResetToken: hashToken(token) },
+  })
+  if (!user || !user.passwordResetExpires || user.passwordResetExpires < new Date()) {
+    throw httpError('Invalid or expired reset token', 400)
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: await hashPassword(newPassword),
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      refreshToken: null,
+    },
+  })
+
+  return { message: 'Password reset successfully. Please log in again.' }
+}
+
 export const changePassword = async (userId, { currentPassword, newPassword }) => {
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw httpError('User not found', 404)
 
   const valid = await comparePassword(currentPassword, user.password)
   if (!valid) throw httpError('Current password is incorrect', 401)
+
+  const samePassword = await comparePassword(newPassword, user.password)
+  if (samePassword) throw httpError('New password must be different from the current password', 400)
 
   await prisma.user.update({
     where: { id: userId },
@@ -110,16 +189,23 @@ export const changeEmail = async (userId, { newEmail, password }) => {
   const taken = await prisma.user.findUnique({ where: { email: newEmail } })
   if (taken) throw httpError('Email already in use', 409)
 
+  const emailVerificationToken = randomBytes(32).toString('hex')
   const refreshToken = signRefreshToken({ sub: userId })
   const updated = await prisma.user.update({
     where: { id: userId },
-    data: { email: newEmail, refreshToken: hashToken(refreshToken) },
+    data: {
+      email: newEmail,
+      emailVerified: false,
+      emailVerificationToken: hashToken(emailVerificationToken),
+      refreshToken: hashToken(refreshToken),
+    },
     select: userSelect,
   })
   return {
     user: updated,
     token: signToken({ id: updated.id, email: updated.email, role: updated.role }),
     refreshToken,
+    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
 }
 
