@@ -28,6 +28,27 @@ export const verifyEmail = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+export const resendVerification = async (req, res, next) => {
+  try {
+    const data = await authService.resendVerification(req.validated.body)
+    res.json({ success: true, data })
+  } catch (err) { next(err) }
+}
+
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const data = await authService.forgotPassword(req.validated.body)
+    res.json({ success: true, data })
+  } catch (err) { next(err) }
+}
+
+export const resetPassword = async (req, res, next) => {
+  try {
+    const data = await authService.resetPassword(req.validated.body)
+    res.json({ success: true, data })
+  } catch (err) { next(err) }
+}
+
 export const changePassword = async (req, res, next) => {
   try {
     const data = await authService.changePassword(req.user.id, req.validated.body)

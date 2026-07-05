@@ -22,3 +22,14 @@ export const authenticate = (req, res, next) => {
     })
   }
 }
+
+// Usage: router.get('/admin', authenticate, authorize('ADMIN'), ctrl.adminOnly)
+export const authorize = (...roles) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'No token provided' })
+  }
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Insufficient permissions' })
+  }
+  next()
+}

@@ -19,6 +19,8 @@ model User {
   role                   Role     @default(USER)
   emailVerified          Boolean  @default(false)
   emailVerificationToken String?  @unique
+  passwordResetToken     String?  @unique
+  passwordResetExpires   DateTime?
   refreshToken           String?  @unique
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
