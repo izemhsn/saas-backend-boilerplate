@@ -3,8 +3,13 @@ import { prisma } from '../../config/db.js'
 import { hashPassword, comparePassword } from '../../utils/hash.js'
 import { signToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt.js'
 import { httpError } from '../../utils/httpError.js'
+import { sendVerificationEmail, sendPasswordResetEmail } from '../shared/email.service.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
+
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+const normalizeEmail = (email) => email.trim().toLowerCase()
 
 // Only select safe fields — password hash never leaves the DB
 const userSelect = {
@@ -13,13 +18,18 @@ const userSelect = {
 }
 
 export const register = async ({ name, email, password }) => {
-  const existing = await prisma.user.findUnique({ where: { email } })
+  const normalizedEmail = normalizeEmail(email)
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } })
   if (existing) throw httpError('Email already registered', 409)
 
   const emailVerificationToken = randomBytes(32).toString('hex')
 
   const user = await prisma.user.create({
-    data: { name, email, password: await hashPassword(password), emailVerificationToken: hashToken(emailVerificationToken) },
+    data: {
+      name: name.trim(), email: normalizedEmail, password: await hashPassword(password),
+      emailVerificationToken: hashToken(emailVerificationToken),
+      emailVerificationExpires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
+    },
     select: userSelect,
   })
 
@@ -28,6 +38,8 @@ export const register = async ({ name, email, password }) => {
     where: { id: user.id },
     data: { refreshToken: hashToken(refreshToken) },
   })
+
+  await sendVerificationEmail({ to: normalizedEmail, token: emailVerificationToken, name: name.trim() })
 
   return {
     user,
@@ -38,7 +50,7 @@ export const register = async ({ name, email, password }) => {
 }
 
 export const login = async ({ email, password }) => {
-  const user = await prisma.user.findUnique({ where: { email } })
+  const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } })
 
   // Check both at once — don't reveal whether the email exists
   const valid = user && (await comparePassword(password, user.password))
@@ -86,18 +98,34 @@ export const refresh = async ({ refreshToken }) => {
 export const verifyEmail = async ({ token }) => {
   const user = await prisma.user.findUnique({ where: { emailVerificationToken: hashToken(token) } })
   if (!user) throw httpError('Invalid or expired verification token', 400)
-  if (user.emailVerified) {
+  if (user.emailVerified && !user.pendingEmail) {
     return { message: 'Email already verified' }
   }
+  if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
+    throw httpError('Verification token has expired. Please request a new one.', 400)
+  }
+
+  const updateData = {
+    emailVerified: true,
+    emailVerificationToken: null,
+    emailVerificationExpires: null,
+  }
+
+  if (user.pendingEmail) {
+    updateData.email = user.pendingEmail
+    updateData.pendingEmail = null
+  }
+
   await prisma.user.update({
     where: { id: user.id },
-    data: { emailVerified: true, emailVerificationToken: null },
+    data: updateData,
   })
   return { message: 'Email verified successfully' }
 }
 
 export const resendVerification = async ({ email }) => {
-  const user = await prisma.user.findUnique({ where: { email } })
+  const normalizedEmail = normalizeEmail(email)
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
 
   // Don't reveal whether the account exists or is already verified
   if (!user || user.emailVerified) {
@@ -107,8 +135,13 @@ export const resendVerification = async ({ email }) => {
   const emailVerificationToken = randomBytes(32).toString('hex')
   await prisma.user.update({
     where: { id: user.id },
-    data: { emailVerificationToken: hashToken(emailVerificationToken) },
+    data: {
+      emailVerificationToken: hashToken(emailVerificationToken),
+      emailVerificationExpires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
+    },
   })
+
+  await sendVerificationEmail({ to: normalizedEmail, token: emailVerificationToken, name: user.name })
 
   return {
     message: 'If that account needs verification, a new token has been issued.',
@@ -119,7 +152,8 @@ export const resendVerification = async ({ email }) => {
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 export const forgotPassword = async ({ email }) => {
-  const user = await prisma.user.findUnique({ where: { email } })
+  const normalizedEmail = normalizeEmail(email)
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
 
   // Don't reveal whether the email exists
   if (!user) {
@@ -134,6 +168,8 @@ export const forgotPassword = async ({ email }) => {
       passwordResetExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS),
     },
   })
+
+  await sendPasswordResetEmail({ to: normalizedEmail, token: resetToken, name: user.name })
 
   return {
     message: 'If that account exists, a password reset token has been issued.',
@@ -186,25 +222,23 @@ export const changeEmail = async (userId, { newEmail, password }) => {
   const valid = await comparePassword(password, user.password)
   if (!valid) throw httpError('Password is incorrect', 401)
 
-  const taken = await prisma.user.findUnique({ where: { email: newEmail } })
+  const normalizedNewEmail = normalizeEmail(newEmail)
+  const taken = await prisma.user.findUnique({ where: { email: normalizedNewEmail } })
   if (taken) throw httpError('Email already in use', 409)
 
   const emailVerificationToken = randomBytes(32).toString('hex')
-  const refreshToken = signRefreshToken({ sub: userId })
-  const updated = await prisma.user.update({
+  await prisma.user.update({
     where: { id: userId },
     data: {
-      email: newEmail,
-      emailVerified: false,
+      pendingEmail: normalizedNewEmail,
       emailVerificationToken: hashToken(emailVerificationToken),
-      refreshToken: hashToken(refreshToken),
+      emailVerificationExpires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
     },
     select: userSelect,
   })
+  await sendVerificationEmail({ to: normalizedNewEmail, token: emailVerificationToken, name: user.name })
   return {
-    user: updated,
-    token: signToken({ id: updated.id, email: updated.email, role: updated.role }),
-    refreshToken,
+    message: 'Verification email sent to your new address. Your email will change after verification.',
     ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
 }

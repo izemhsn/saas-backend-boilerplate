@@ -39,6 +39,8 @@ const sensitiveLimiter = rateLimit({
 app.use('/api/auth', authLimiter)
 app.post('/api/auth/login',    sensitiveLimiter)
 app.post('/api/auth/register', sensitiveLimiter)
+app.post('/api/auth/refresh',  sensitiveLimiter)
+app.post('/api/auth/verify-email',         sensitiveLimiter)
 app.post('/api/auth/forgot-password',     sensitiveLimiter)
 app.post('/api/auth/reset-password',      sensitiveLimiter)
 app.post('/api/auth/resend-verification', sensitiveLimiter)
