@@ -1,9 +1,10 @@
 // 4-parameter signature = Express recognizes this as error middleware
-export const errorHandler = (err, req, res, next) => {
+// (_next is required to keep the arity even though it is unused)
+export const errorHandler = (err, req, res, _next) => {
   console.error(err.stack)
 
   const statusCode = err.statusCode ?? 500
-  const message    = err.message ?? 'Internal Server Error'
+  const message = err.message ?? 'Internal Server Error'
 
   res.status(statusCode).json({
     success: false,

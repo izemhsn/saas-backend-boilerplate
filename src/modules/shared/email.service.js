@@ -1,8 +1,6 @@
 import { Resend } from 'resend'
 
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 const FROM = process.env.FROM_EMAIL ?? 'noreply@example.com'
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'

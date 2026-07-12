@@ -1,8 +1,8 @@
 // Higher-order function: returns a middleware that validates with schema
 export const validate = (schema) => (req, res, next) => {
   const result = schema.safeParse({
-    body:   req.body,
-    query:  req.query,
+    body: req.body,
+    query: req.query,
     params: req.params,
   })
 
