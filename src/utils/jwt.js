@@ -15,6 +15,8 @@ export const signRefreshToken = (payload) =>
     algorithm: 'HS256',
   })
 
-export const verifyToken = (token) => jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+export const verifyToken = (token) =>
+  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
 
-export const verifyRefreshToken = (token) => jwt.verify(token, process.env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] })
+export const verifyRefreshToken = (token) =>
+  jwt.verify(token, process.env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] })

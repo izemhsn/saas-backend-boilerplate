@@ -1,0 +1,13 @@
+node_modules
+coverage
+.git
+.gitignore
+.env
+.env.*
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+.eslintcache
+.prettierignore
+.prettierrc.json
