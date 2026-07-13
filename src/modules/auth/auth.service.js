@@ -8,6 +8,9 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../shared/email.s
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days — must match JWT_REFRESH_EXPIRES_IN
+const MAX_FAILED_ATTEMPTS = 5
+const LOCK_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
 
@@ -18,6 +21,27 @@ const userSelect = {
   email: true,
   role: true,
   createdAt: true,
+}
+
+// Create a refresh token record in the DB and return the raw token
+const createRefreshTokenRecord = async (userId) => {
+  const refreshToken = signRefreshToken({ sub: userId })
+  await prisma.refreshToken.create({
+    data: {
+      token: hashToken(refreshToken),
+      userId,
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    },
+  })
+  return refreshToken
+}
+
+// Revoke all non-revoked refresh tokens for a user
+const revokeAllRefreshTokens = async (userId) => {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revoked: false },
+    data: { revoked: true },
+  })
 }
 
 export const register = async ({ name, email, password }) => {
@@ -38,14 +62,10 @@ export const register = async ({ name, email, password }) => {
       emailVerificationToken: hashToken(emailVerificationToken),
       emailVerificationExpires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
     },
-    select: userSelect,
+    select: { ...userSelect, tokenVersion: true },
   })
 
-  const refreshToken = signRefreshToken({ sub: user.id })
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken: hashToken(refreshToken) },
-  })
+  const refreshToken = await createRefreshTokenRecord(user.id)
 
   await sendVerificationEmail({
     to: normalizedEmail,
@@ -55,7 +75,12 @@ export const register = async ({ name, email, password }) => {
 
   return {
     user,
-    token: signToken({ id: user.id, email: user.email, role: user.role }),
+    token: signToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    }),
     refreshToken,
     ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
@@ -64,26 +89,71 @@ export const register = async ({ name, email, password }) => {
 export const login = async ({ email, password }) => {
   const user = await prisma.user.findUnique({
     where: { email: normalizeEmail(email) },
-    select: { id: true, email: true, password: true, role: true },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+      role: true,
+      tokenVersion: true,
+      failedLoginAttempts: true,
+      lockedUntil: true,
+    },
   })
+
+  // Check if account is locked (before password verification)
+  if (user?.lockedUntil && user.lockedUntil > new Date()) {
+    throw httpError(
+      'Account temporarily locked due to too many failed attempts. Try again later.',
+      423,
+    )
+  }
+
+  // Reset lock if it has expired
+  if (user?.lockedUntil && user.lockedUntil <= new Date()) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    })
+    user.failedLoginAttempts = 0
+    user.lockedUntil = null
+  }
 
   // Always run a bcrypt compare (dummy hash if the user is missing) so response
   // timing doesn't reveal whether the email exists.
   const valid = user
     ? await comparePassword(password, user.password)
     : (await dummyCompare(), false)
-  if (!valid) throw httpError('Invalid credentials', 401)
 
-  const refreshToken = signRefreshToken({ sub: user.id })
+  if (!valid) {
+    if (user) {
+      const failedAttempts = user.failedLoginAttempts + 1
+      const updateData = { failedLoginAttempts: failedAttempts }
+      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        updateData.lockedUntil = new Date(Date.now() + LOCK_DURATION_MS)
+      }
+      await prisma.user.update({
+        where: { id: user.id },
+        data: updateData,
+      })
+    }
+    throw httpError('Invalid credentials', 401)
+  }
+
+  const refreshToken = await createRefreshTokenRecord(user.id)
   const safeUser = await prisma.user.update({
     where: { id: user.id },
-    data: { refreshToken: hashToken(refreshToken) },
+    data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
     select: userSelect,
   })
 
   return {
     user: safeUser,
-    token: signToken({ id: user.id, email: user.email, role: user.role }),
+    token: signToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    }),
     refreshToken,
   }
 }
@@ -95,21 +165,40 @@ export const refresh = async ({ refreshToken }) => {
     throw httpError('Invalid or expired refresh token', 401)
   }
 
-  const user = await prisma.user.findUnique({
-    where: { refreshToken: hashToken(refreshToken) },
-    select: { id: true, email: true, role: true },
+  const storedToken = await prisma.refreshToken.findUnique({
+    where: { token: hashToken(refreshToken) },
+    include: { user: { select: { id: true, email: true, role: true, tokenVersion: true } } },
   })
-  if (!user) throw httpError('Invalid refresh token', 401)
 
-  // Rotate: issue a brand-new refresh token and invalidate the old one
-  const newRefreshToken = signRefreshToken({ sub: user.id })
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken: hashToken(newRefreshToken) },
+  // Reuse detection: if the token exists but is revoked, someone is trying to reuse
+  // an already-rotated token. Revoke ALL tokens for this user as a compromise signal.
+  if (storedToken?.revoked) {
+    await prisma.refreshToken.updateMany({
+      where: { userId: storedToken.userId },
+      data: { revoked: true },
+    })
+    throw httpError('Invalid refresh token', 401)
+  }
+
+  if (!storedToken) throw httpError('Invalid refresh token', 401)
+
+  const user = storedToken.user
+
+  // Rotate: revoke the old token and issue a new one
+  await prisma.refreshToken.update({
+    where: { id: storedToken.id },
+    data: { revoked: true },
   })
+
+  const newRefreshToken = await createRefreshTokenRecord(user.id)
 
   return {
-    token: signToken({ id: user.id, email: user.email, role: user.role }),
+    token: signToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    }),
     refreshToken: newRefreshToken,
   }
 }
@@ -236,9 +325,10 @@ export const resetPassword = async ({ token, newPassword }) => {
       password: await hashPassword(newPassword),
       passwordResetToken: null,
       passwordResetExpires: null,
-      refreshToken: null,
+      tokenVersion: { increment: 1 },
     },
   })
+  await revokeAllRefreshTokens(user.id)
 
   return { message: 'Password reset successfully. Please log in again.' }
 }
@@ -258,8 +348,9 @@ export const changePassword = async (userId, { currentPassword, newPassword }) =
 
   await prisma.user.update({
     where: { id: userId },
-    data: { password: await hashPassword(newPassword), refreshToken: null },
+    data: { password: await hashPassword(newPassword), tokenVersion: { increment: 1 } },
   })
+  await revokeAllRefreshTokens(userId)
   return { message: 'Password changed successfully. Please log in again.' }
 }
 
@@ -279,6 +370,13 @@ export const changeEmail = async (userId, { newEmail, password }) => {
     select: { id: true },
   })
   if (taken) throw httpError('Email already in use', 409)
+
+  // Check if pendingEmail is already claimed by another user
+  const pendingTaken = await prisma.user.findFirst({
+    where: { pendingEmail: normalizedNewEmail, NOT: { id: userId } },
+    select: { id: true },
+  })
+  if (pendingTaken) throw httpError('Email already in use', 409)
 
   const emailVerificationToken = randomBytes(32).toString('hex')
   await prisma.user.update({
@@ -302,11 +400,17 @@ export const changeEmail = async (userId, { newEmail, password }) => {
   }
 }
 
-export const logout = async (userId) => {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { refreshToken: null },
-  })
+export const logout = async (userId, refreshToken) => {
+  if (refreshToken) {
+    // Revoke just the provided refresh token (per-session logout)
+    await prisma.refreshToken.updateMany({
+      where: { token: hashToken(refreshToken), userId },
+      data: { revoked: true },
+    })
+  } else {
+    // Revoke all refresh tokens for this user (logout everywhere)
+    await revokeAllRefreshTokens(userId)
+  }
   return { message: 'Logged out successfully' }
 }
 

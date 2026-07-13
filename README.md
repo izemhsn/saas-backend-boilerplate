@@ -74,7 +74,8 @@ The server runs at `http://localhost:3000` by default, or the port set in `.env`
 | `npm run lint:fix`     | Lint and auto-fix                      |
 | `npm run format`       | Format with Prettier                   |
 | `npm run format:check` | Check formatting without writing       |
-| `npm run db:migrate`   | Run Prisma migrations                  |
+| `npm run db:migrate`   | Run Prisma migrations (dev)            |
+| `npm run db:deploy`    | Apply migrations (production)          |
 | `npm run db:generate`  | Regenerate Prisma client               |
 | `npm run db:studio`    | Open Prisma Studio                     |
 
@@ -90,13 +91,20 @@ The server runs at `http://localhost:3000` by default, or the port set in `.env`
 | `POST` | `/api/auth/forgot-password`     | No   | Issue a password reset token (1h expiry)                       |
 | `POST` | `/api/auth/reset-password`      | No   | Reset password using a valid reset token                       |
 | `POST` | `/api/auth/change-password`     | Yes  | Change password (requires current password)                    |
-| `POST` | `/api/auth/change-email`        | Yes  | Change email (requires password, returns new JWT)              |
-| `POST` | `/api/auth/logout`              | Yes  | Logout (invalidates stored refresh token)                      |
+| `POST` | `/api/auth/change-email`        | Yes  | Change email (requires password, verified before switching)    |
+| `POST` | `/api/auth/logout`              | Yes  | Logout — see session behavior below                            |
 | `GET`  | `/api/auth/me`                  | Yes  | Get current user profile                                       |
 
-Refresh tokens rotate on every use: `POST /api/auth/refresh` invalidates the submitted refresh token and returns a new one alongside the new access token.
-
 Protected routes require `Authorization: Bearer <token>`.
+
+### Session & token behavior
+
+- **Multi-session** — Each login/registration issues an independent refresh token, stored (hashed) in the `refresh_tokens` table. A user can be signed in on multiple devices at once.
+- **Refresh rotation** — `POST /api/auth/refresh` revokes the submitted refresh token and returns a new one alongside a new access token.
+- **Reuse detection** — If an already-rotated (revoked) refresh token is presented, the entire token family for that user is revoked as a compromise signal.
+- **Logout** — `POST /api/auth/logout` with `{ "refreshToken": "..." }` revokes just that session. Without a body, it revokes **all** of the user's refresh tokens (logout everywhere).
+- **Access-token invalidation** — Changing or resetting a password increments the user's `tokenVersion`, immediately invalidating all previously issued access tokens (checked in the `authenticate` middleware) and revoking all refresh tokens.
+- **Account lockout** — After 5 consecutive failed login attempts an account is locked for 15 minutes (HTTP `423`). The counter resets on a successful login or once the lock expires.
 
 ### Middleware guards
 
@@ -115,3 +123,59 @@ GET /health
 ```
 
 Returns `{ status: "ok", timestamp: "..." }`. Use this for uptime monitoring and load balancer health checks.
+
+## Production deployment
+
+### Environment variables
+
+| Variable                 | Required     | Notes                                                                      |
+| ------------------------ | ------------ | -------------------------------------------------------------------------- |
+| `NODE_ENV`               | Yes          | Set to `production`.                                                       |
+| `PORT`                   | No           | Defaults to `3000`.                                                        |
+| `DATABASE_URL`           | Yes          | PostgreSQL connection string.                                              |
+| `JWT_SECRET`             | Yes          | **Min 32 chars in production** (enforced at boot).                         |
+| `JWT_REFRESH_SECRET`     | Yes          | **Min 32 chars in production** (enforced at boot). Must differ from above. |
+| `JWT_EXPIRES_IN`         | No           | Access-token TTL. Defaults to `15m`.                                       |
+| `JWT_REFRESH_EXPIRES_IN` | No           | Refresh-token TTL. Defaults to `7d`.                                       |
+| `CORS_ORIGIN`            | Yes (prod)   | Exact frontend origin. Never `*` in production (enforced at boot).         |
+| `TRUST_PROXY`            | Behind proxy | Number of proxy hops (e.g. `1`) so `req.ip`/rate limiting see the real IP. |
+| `RESEND_API_KEY`         | Yes (email)  | Resend API key. If unset, emails are logged & skipped (dev only).          |
+| `FROM_EMAIL`             | Yes (email)  | Verified sender address.                                                   |
+| `APP_URL`                | Yes          | Public base URL used to build verification / reset links.                  |
+
+Generate strong secrets:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+The server validates configuration at boot and **exits** if:
+
+- `DATABASE_URL`, `JWT_SECRET`, or `JWT_REFRESH_SECRET` is missing.
+- In production: either JWT secret is shorter than 32 characters, or `CORS_ORIGIN` is unset.
+
+### Pre-flight checklist
+
+- [ ] `NODE_ENV=production`
+- [ ] Unique 32+ char `JWT_SECRET` and `JWT_REFRESH_SECRET` (never the `.env.example` defaults)
+- [ ] `CORS_ORIGIN` set to your exact frontend origin
+- [ ] `TRUST_PROXY` set if behind a load balancer / ingress
+- [ ] `RESEND_API_KEY`, `FROM_EMAIL`, and `APP_URL` configured for real email delivery
+- [ ] Migrations applied against the production database (`prisma migrate deploy`)
+- [ ] `/health` wired into your uptime monitor / load balancer probe
+- [ ] Secrets injected via your platform's secret manager (not committed to the repo)
+
+### Build & run with Docker
+
+```bash
+# Build the production image (multi-stage; installs prod deps only)
+docker build -t saas-backend .
+
+# Apply migrations against the production database
+npm run db:deploy
+
+# Run the container
+docker run -p 3000:3000 --env-file .env saas-backend
+```
+
+> Run `npm run db:deploy` (`prisma migrate deploy`), not `db:migrate`, in production — it applies committed migrations without generating new ones or prompting.

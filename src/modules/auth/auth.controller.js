@@ -83,7 +83,8 @@ export const changeEmail = async (req, res, next) => {
 
 export const logout = async (req, res, next) => {
   try {
-    await authService.logout(req.user.id)
+    const refreshToken = req.body?.refreshToken
+    await authService.logout(req.user.id, refreshToken)
     res.json({ success: true, data: { message: 'Logged out successfully' } })
   } catch (err) {
     next(err)

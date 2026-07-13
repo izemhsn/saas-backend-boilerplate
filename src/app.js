@@ -22,7 +22,11 @@ app.use(helmet()) // Secure HTTP headers
 
 // CORS — never default to wildcard in production
 const corsOrigin = process.env.CORS_ORIGIN ?? '*'
-app.use(cors({ origin: corsOrigin }))
+const corsOptions = { origin: corsOrigin }
+if (corsOrigin !== '*') {
+  corsOptions.credentials = true
+}
+app.use(cors(corsOptions))
 
 app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit prevents oversized payload DoS)
 
