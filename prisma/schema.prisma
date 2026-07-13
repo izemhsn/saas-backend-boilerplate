@@ -20,14 +20,36 @@ model User {
   emailVerified          Boolean  @default(false)
   emailVerificationToken String?  @unique
   emailVerificationExpires DateTime?
-  pendingEmail           String?
+  pendingEmail           String?  @unique
   passwordResetToken     String?  @unique
   passwordResetExpires   DateTime?
-  refreshToken           String?  @unique
+  tokenVersion           Int      @default(0)
+  failedLoginAttempts    Int      @default(0)
+  lockedUntil            DateTime?
+  lastLoginAt            DateTime?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
+  refreshTokens RefreshToken[]
+
   @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  userAgent String?
+  ipAddress String?
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 enum Role {

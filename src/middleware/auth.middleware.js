@@ -1,7 +1,7 @@
 import { verifyToken } from '../utils/jwt.js'
 import { prisma } from '../config/db.js'
 
-export const authenticate = (req, res, next) => {
+export const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization
 
   // Expect: "Authorization: Bearer <token>"
@@ -14,7 +14,23 @@ export const authenticate = (req, res, next) => {
 
   try {
     const token = authHeader.split(' ')[1]
-    req.user = verifyToken(token) // adds { id, email, role } to request
+    const decoded = verifyToken(token) // { id, email, role, tokenVersion }
+
+    // Verify the user still exists and the token version matches
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, email: true, role: true, tokenVersion: true },
+    })
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User no longer exists' })
+    }
+
+    if (decoded.tokenVersion !== user.tokenVersion) {
+      return res.status(401).json({ success: false, message: 'Token has been invalidated' })
+    }
+
+    req.user = { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion }
     next()
   } catch {
     res.status(401).json({
