@@ -29,7 +29,10 @@ const server = app.listen(PORT, () => {
 })
 
 // Graceful shutdown: stop accepting connections, then close the DB pool
+let shuttingDown = false
 const shutdown = async (signal) => {
+  if (shuttingDown) return
+  shuttingDown = true
   console.log(`${signal} received — shutting down gracefully`)
   server.close(async () => {
     await prisma.$disconnect()

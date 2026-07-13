@@ -11,6 +11,7 @@ import {
   resetPasswordSchema,
   changePasswordSchema,
   changeEmailSchema,
+  logoutSchema,
 } from './auth.schema.js'
 import * as ctrl from './auth.controller.js'
 
@@ -28,7 +29,7 @@ router.post('/reset-password', validate(resetPasswordSchema), ctrl.resetPassword
 // Protected route — JWT required
 router.post('/change-password', authenticate, validate(changePasswordSchema), ctrl.changePassword)
 router.post('/change-email', authenticate, validate(changeEmailSchema), ctrl.changeEmail)
-router.post('/logout', authenticate, ctrl.logout)
+router.post('/logout', authenticate, validate(logoutSchema), ctrl.logout)
 router.get('/me', authenticate, ctrl.getMe)
 
 export default router

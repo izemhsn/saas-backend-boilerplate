@@ -2,7 +2,10 @@ import * as authService from './auth.service.js'
 
 export const register = async (req, res, next) => {
   try {
-    const data = await authService.register(req.validated.body)
+    const data = await authService.register(req.validated.body, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    })
     res.status(201).json({ success: true, data })
   } catch (err) {
     next(err)
@@ -11,7 +14,10 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
-    const data = await authService.login(req.validated.body)
+    const data = await authService.login(req.validated.body, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    })
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -20,7 +26,10 @@ export const login = async (req, res, next) => {
 
 export const refresh = async (req, res, next) => {
   try {
-    const data = await authService.refresh(req.validated.body)
+    const data = await authService.refresh(req.validated.body, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    })
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -83,7 +92,7 @@ export const changeEmail = async (req, res, next) => {
 
 export const logout = async (req, res, next) => {
   try {
-    const refreshToken = req.body?.refreshToken
+    const refreshToken = req.validated?.body?.refreshToken
     await authService.logout(req.user.id, refreshToken)
     res.json({ success: true, data: { message: 'Logged out successfully' } })
   } catch (err) {
