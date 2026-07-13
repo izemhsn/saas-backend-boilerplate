@@ -61,6 +61,14 @@ export const forgotPasswordSchema = z.object({
   }),
 })
 
+export const logoutSchema = z.object({
+  body: z
+    .object({
+      refreshToken: z.string().min(1).optional(),
+    })
+    .default({}),
+})
+
 export const resetPasswordSchema = z.object({
   body: z.object({
     token: z.string().min(1, 'Reset token is required'),

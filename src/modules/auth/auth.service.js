@@ -24,12 +24,14 @@ const userSelect = {
 }
 
 // Create a refresh token record in the DB and return the raw token
-const createRefreshTokenRecord = async (userId) => {
+const createRefreshTokenRecord = async (userId, { userAgent, ipAddress } = {}) => {
   const refreshToken = signRefreshToken({ sub: userId })
   await prisma.refreshToken.create({
     data: {
       token: hashToken(refreshToken),
       userId,
+      userAgent: userAgent ?? null,
+      ipAddress: ipAddress ?? null,
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     },
   })
@@ -44,7 +46,7 @@ const revokeAllRefreshTokens = async (userId) => {
   })
 }
 
-export const register = async ({ name, email, password }) => {
+export const register = async ({ name, email, password }, { userAgent, ipAddress } = {}) => {
   const normalizedEmail = normalizeEmail(email)
   const existing = await prisma.user.findUnique({
     where: { email: normalizedEmail },
@@ -54,7 +56,7 @@ export const register = async ({ name, email, password }) => {
 
   const emailVerificationToken = randomBytes(32).toString('hex')
 
-  const user = await prisma.user.create({
+  const { tokenVersion, ...user } = await prisma.user.create({
     data: {
       name: name.trim(),
       email: normalizedEmail,
@@ -65,7 +67,7 @@ export const register = async ({ name, email, password }) => {
     select: { ...userSelect, tokenVersion: true },
   })
 
-  const refreshToken = await createRefreshTokenRecord(user.id)
+  const refreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })
 
   await sendVerificationEmail({
     to: normalizedEmail,
@@ -79,14 +81,14 @@ export const register = async ({ name, email, password }) => {
       id: user.id,
       email: user.email,
       role: user.role,
-      tokenVersion: user.tokenVersion,
+      tokenVersion,
     }),
     refreshToken,
     ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
 }
 
-export const login = async ({ email, password }) => {
+export const login = async ({ email, password }, { userAgent, ipAddress } = {}) => {
   const user = await prisma.user.findUnique({
     where: { email: normalizeEmail(email) },
     select: {
@@ -139,7 +141,7 @@ export const login = async ({ email, password }) => {
     throw httpError('Invalid credentials', 401)
   }
 
-  const refreshToken = await createRefreshTokenRecord(user.id)
+  const refreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })
   const safeUser = await prisma.user.update({
     where: { id: user.id },
     data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
@@ -158,7 +160,7 @@ export const login = async ({ email, password }) => {
   }
 }
 
-export const refresh = async ({ refreshToken }) => {
+export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) => {
   try {
     verifyRefreshToken(refreshToken)
   } catch {
@@ -190,7 +192,7 @@ export const refresh = async ({ refreshToken }) => {
     data: { revoked: true },
   })
 
-  const newRefreshToken = await createRefreshTokenRecord(user.id)
+  const newRefreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })
 
   return {
     token: signToken({
