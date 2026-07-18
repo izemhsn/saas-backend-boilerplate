@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit'
 import { errorHandler } from './middleware/error.middleware.js'
 import authRouter from './modules/auth/auth.router.js'
 import orgRouter from './modules/org/org.router.js'
+import adminRouter from './modules/admin/admin.router.js'
 import { prisma } from './config/db.js'
 
 const app = express()
@@ -93,6 +94,9 @@ app.use('/api/auth', authRouter)
 
 app.use('/api/organizations', authLimiter)
 app.use('/api/organizations', orgRouter)
+
+app.use('/api/admin', authLimiter)
+app.use('/api/admin', adminRouter)
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
 

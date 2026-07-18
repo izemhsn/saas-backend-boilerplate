@@ -99,6 +99,8 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
       tokenVersion: true,
       failedLoginAttempts: true,
       lockedUntil: true,
+      banned: true,
+      suspendedUntil: true,
     },
   })
 
@@ -141,6 +143,14 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
     throw httpError('Invalid credentials', 401)
   }
 
+  if (user.banned) {
+    throw httpError('Your account has been banned', 403)
+  }
+
+  if (user.suspendedUntil && user.suspendedUntil > new Date()) {
+    throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+  }
+
   const refreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })
   const safeUser = await prisma.user.update({
     where: { id: user.id },
@@ -169,7 +179,7 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
 
   const storedToken = await prisma.refreshToken.findUnique({
     where: { token: hashToken(refreshToken) },
-    include: { user: { select: { id: true, email: true, role: true, tokenVersion: true } } },
+    include: { user: { select: { id: true, email: true, role: true, tokenVersion: true, banned: true, suspendedUntil: true } } },
   })
 
   // Reuse detection: if the token exists but is revoked, someone is trying to reuse
@@ -185,6 +195,14 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
   if (!storedToken) throw httpError('Invalid refresh token', 401)
 
   const user = storedToken.user
+
+  if (user.banned) {
+    throw httpError('Your account has been banned', 403)
+  }
+
+  if (user.suspendedUntil && user.suspendedUntil > new Date()) {
+    throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+  }
 
   // Rotate: revoke the old token and issue a new one
   await prisma.refreshToken.update({
