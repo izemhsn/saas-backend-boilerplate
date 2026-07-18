@@ -8,6 +8,8 @@ import {
   orgIdParamSchema,
   updateMemberSchema,
   removeMemberSchema,
+  listOrgsSchema,
+  listMembersSchema,
 } from './org.schema.js'
 import * as ctrl from './org.controller.js'
 
@@ -18,7 +20,7 @@ router.use(authenticate)
 
 // Create + list (no orgId param)
 router.post('/', validate(createOrgSchema), ctrl.createOrganization)
-router.get('/', ctrl.listOrganizations)
+router.get('/', validate(listOrgsSchema), ctrl.listOrganizations)
 
 // Single-org operations — requireTenant resolves membership
 router.get('/:orgId', validate(orgIdParamSchema), requireTenant, ctrl.getOrganization)
@@ -38,7 +40,7 @@ router.delete(
 )
 
 // Members
-router.get('/:orgId/members', validate(orgIdParamSchema), requireTenant, ctrl.listMembers)
+router.get('/:orgId/members', validate(listMembersSchema), requireTenant, ctrl.listMembers)
 router.patch(
   '/:orgId/members/:userId',
   validate(updateMemberSchema),

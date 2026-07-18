@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js'
 import { httpError } from '../../utils/httpError.js'
+import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
 
 const userSelect = {
   id: true,
@@ -20,12 +21,8 @@ export const listUsers = async (query) => {
 
   const where = {}
 
-  if (search) {
-    where.OR = [
-      { email: { contains: search, mode: 'insensitive' } },
-      { name: { contains: search, mode: 'insensitive' } },
-    ]
-  }
+  const searchClause = buildSearch(search, ['email', 'name'])
+  if (searchClause) where.OR = searchClause
 
   if (role) {
     where.role = role
@@ -37,9 +34,8 @@ export const listUsers = async (query) => {
     where.suspendedUntil = { gt: new Date() }
   } else if (status === 'active') {
     where.banned = false
-    where.OR = [
-      { suspendedUntil: null },
-      { suspendedUntil: { lte: new Date() } },
+    where.AND = [
+      { OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: new Date() } }] },
     ]
   }
 
@@ -47,21 +43,15 @@ export const listUsers = async (query) => {
     prisma.user.findMany({
       where,
       select: userSelect,
-      orderBy: { [sort]: order },
-      skip: (page - 1) * limit,
-      take: limit,
+      orderBy: parseSort(sort, order, ['createdAt', 'email', 'name']),
+      ...paginationParams(page, limit),
     }),
     prisma.user.count({ where }),
   ])
 
   return {
     users,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
+    pagination: paginationMeta(page, limit, total),
   }
 }
 

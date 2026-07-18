@@ -1,14 +1,13 @@
 import { z } from 'zod'
+import { listQuerySchema } from '../../utils/query.schema.js'
 
 export const listUsersSchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(100).default(20),
-    search: z.string().optional(),
-    role: z.enum(['USER', 'ADMIN']).optional(),
-    status: z.enum(['active', 'banned', 'suspended']).optional(),
-    sort: z.enum(['createdAt', 'email', 'name']).default('createdAt'),
-    order: z.enum(['asc', 'desc']).default('desc'),
+  query: listQuerySchema(['createdAt', 'email', 'name'], {
+    extra: {
+      search: z.string().optional(),
+      role: z.enum(['USER', 'ADMIN']).optional(),
+      status: z.enum(['active', 'banned', 'suspended']).optional(),
+    },
   }),
 })
 
