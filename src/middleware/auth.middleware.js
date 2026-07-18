@@ -19,7 +19,7 @@ export const authenticate = async (req, res, next) => {
     // Verify the user still exists and the token version matches
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, role: true, tokenVersion: true },
+      select: { id: true, email: true, role: true, tokenVersion: true, banned: true, suspendedUntil: true },
     })
 
     if (!user) {
@@ -28,6 +28,14 @@ export const authenticate = async (req, res, next) => {
 
     if (decoded.tokenVersion !== user.tokenVersion) {
       return res.status(401).json({ success: false, message: 'Token has been invalidated' })
+    }
+
+    if (user.banned) {
+      return res.status(403).json({ success: false, message: 'Your account has been banned' })
+    }
+
+    if (user.suspendedUntil && user.suspendedUntil > new Date()) {
+      return res.status(403).json({ success: false, message: `Your account is suspended until ${user.suspendedUntil.toISOString()}` })
     }
 
     req.user = { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion }
