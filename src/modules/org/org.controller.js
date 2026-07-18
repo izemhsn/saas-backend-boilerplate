@@ -11,7 +11,7 @@ export const createOrganization = async (req, res, next) => {
 
 export const listOrganizations = async (req, res, next) => {
   try {
-    const data = await orgService.listOrganizations(req.user.id)
+    const data = await orgService.listOrganizations(req.user.id, req.validated?.query)
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -47,7 +47,7 @@ export const deleteOrganization = async (req, res, next) => {
 
 export const listMembers = async (req, res, next) => {
   try {
-    const data = await orgService.listMembers(req.tenant.id)
+    const data = await orgService.listMembers(req.tenant.id, req.validated?.query)
     res.json({ success: true, data })
   } catch (err) {
     next(err)

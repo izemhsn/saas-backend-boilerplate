@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js'
 import { httpError } from '../../utils/httpError.js'
+import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
 
 const orgSelect = {
   id: true,
@@ -41,21 +42,33 @@ export const createOrganization = async (userId, { name, slug }) => {
   return { organization }
 }
 
-export const listOrganizations = async (userId) => {
-  const memberships = await prisma.organizationMember.findMany({
-    where: { userId },
-    select: {
-      role: true,
-      organization: { select: orgSelect },
-    },
-    orderBy: { organization: { createdAt: 'asc' } },
-  })
+export const listOrganizations = async (userId, query = {}) => {
+  const { page, limit, search, sort, order } = query
+
+  const where = { userId }
+
+  const searchClause = buildSearch(search, ['organization.name', 'organization.slug'])
+  if (searchClause) where.OR = searchClause
+
+  const [memberships, total] = await Promise.all([
+    prisma.organizationMember.findMany({
+      where,
+      select: {
+        role: true,
+        organization: { select: orgSelect },
+      },
+      orderBy: { organization: parseSort(sort, order, ['createdAt', 'name', 'slug']) },
+      ...paginationParams(page ?? 1, limit ?? 20),
+    }),
+    prisma.organizationMember.count({ where }),
+  ])
 
   return {
     organizations: memberships.map((m) => ({
       ...m.organization,
       role: m.role,
     })),
+    pagination: paginationMeta(page ?? 1, limit ?? 20, total),
   }
 }
 
@@ -96,14 +109,28 @@ export const deleteOrganization = async (orgId) => {
   return { message: 'Organization deleted successfully' }
 }
 
-export const listMembers = async (orgId) => {
-  const members = await prisma.organizationMember.findMany({
-    where: { organizationId: orgId },
-    select: memberSelect,
-    orderBy: { createdAt: 'asc' },
-  })
+export const listMembers = async (orgId, query = {}) => {
+  const { page, limit, search, sort, order } = query
 
-  return { members }
+  const where = { organizationId: orgId }
+
+  const searchClause = buildSearch(search, ['user.name', 'user.email'])
+  if (searchClause) where.OR = searchClause
+
+  const [members, total] = await Promise.all([
+    prisma.organizationMember.findMany({
+      where,
+      select: memberSelect,
+      orderBy: parseSort(sort, order, ['createdAt', 'role']),
+      ...paginationParams(page ?? 1, limit ?? 20),
+    }),
+    prisma.organizationMember.count({ where }),
+  ])
+
+  return {
+    members,
+    pagination: paginationMeta(page ?? 1, limit ?? 20, total),
+  }
 }
 
 export const updateMemberRole = async (orgId, targetUserId, role) => {

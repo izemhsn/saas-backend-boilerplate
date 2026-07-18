@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { listQuerySchema } from '../../utils/query.schema.js'
 
 export const createOrgSchema = z.object({
   body: z.object({
@@ -50,5 +51,25 @@ export const removeMemberSchema = z.object({
   params: z.object({
     orgId: z.string().min(1),
     userId: z.string().min(1),
+  }),
+})
+
+export const listOrgsSchema = z.object({
+  query: listQuerySchema(['createdAt', 'name', 'slug'], {
+    extra: {
+      search: z.string().optional(),
+    },
+  }),
+})
+
+export const listMembersSchema = z.object({
+  params: z.object({
+    orgId: z.string().min(1),
+  }),
+  query: listQuerySchema(['createdAt', 'role'], {
+    defaultSort: 'createdAt',
+    extra: {
+      search: z.string().optional(),
+    },
   }),
 })

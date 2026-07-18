@@ -121,6 +121,71 @@ describe('GET /api/organizations', () => {
     expect(org).toBeDefined()
     expect(org.role).toBe('OWNER')
   })
+
+  it('returns pagination metadata', async () => {
+    const { res: registerRes } = await registerUser('pagination')
+    const { token } = registerRes.body.data
+
+    const res = await request(app)
+      .get('/api/organizations?page=1&limit=5')
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.pagination).toBeDefined()
+    expect(res.body.data.pagination.page).toBe(1)
+    expect(res.body.data.pagination.limit).toBe(5)
+    expect(res.body.data.pagination.total).toBeTypeOf('number')
+    expect(res.body.data.pagination.totalPages).toBeTypeOf('number')
+  })
+
+  it('filters organizations by search term', async () => {
+    const { res: registerRes } = await registerUser('search')
+    const { token } = registerRes.body.data
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Searchable Org', slug: `searchable-${RUN_ID}` })
+    createdOrgIds.push(createRes.body.data.organization.id)
+
+    const res = await request(app)
+      .get('/api/organizations?search=Searchable')
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.organizations.length).toBeGreaterThanOrEqual(1)
+    expect(
+      res.body.data.organizations.every(
+        (o) => o.name.includes('Searchable') || o.slug.includes('searchable'),
+      ),
+    ).toBe(true)
+  })
+
+  it('sorts organizations by name ascending', async () => {
+    const { res: registerRes } = await registerUser('sort')
+    const { token } = registerRes.body.data
+
+    await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Zebra Org', slug: `zebra-${RUN_ID}` })
+      .then((r) => createdOrgIds.push(r.body.data.organization.id))
+
+    await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Alpha Org', slug: `alpha-${RUN_ID}` })
+      .then((r) => createdOrgIds.push(r.body.data.organization.id))
+
+    const res = await request(app)
+      .get('/api/organizations?sort=name&order=asc')
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(res.status).toBe(200)
+    const names = res.body.data.organizations.map((o) => o.name)
+    const sortedNames = [...names].sort()
+    expect(names).toEqual(sortedNames)
+  })
 })
 
 describe('GET /api/organizations/:orgId', () => {
@@ -283,6 +348,56 @@ describe('GET /api/organizations/:orgId/members', () => {
     expect(res.body.data.members).toHaveLength(1)
     expect(res.body.data.members[0].role).toBe('OWNER')
     expect(res.body.data.members[0].user.id).toBe(userId)
+  })
+
+  it('returns pagination metadata', async () => {
+    const { res: registerRes } = await registerUser('members-pagination')
+    const { token } = registerRes.body.data
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Pagination Org', slug: `pagination-org-${RUN_ID}` })
+    const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/members?page=1&limit=10`)
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.pagination).toBeDefined()
+    expect(res.body.data.pagination.page).toBe(1)
+    expect(res.body.data.pagination.limit).toBe(10)
+    expect(res.body.data.pagination.total).toBe(1)
+  })
+
+  it('searches members by name', async () => {
+    const { res: ownerRes } = await registerUser('members-search-owner')
+    const { res: memberRes } = await registerUser('members-search-target')
+    const ownerToken = ownerRes.body.data.token
+    const memberUserId = memberRes.body.data.user.id
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Search Members Org', slug: `search-members-${RUN_ID}` })
+    const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    await prisma.organizationMember.create({
+      data: { organizationId: orgId, userId: memberUserId, role: 'MEMBER' },
+    })
+
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/members?search=members-search-target`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.members.length).toBeGreaterThanOrEqual(1)
+    expect(
+      res.body.data.members.some((m) => m.user.email.includes('members-search-target')),
+    ).toBe(true)
   })
 })
 
