@@ -38,6 +38,8 @@ model User {
   memberships  OrganizationMember[]
   ownedOrganizations Organization[] @relation("OrgOwner")
   subscriptions Subscription[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
 
   @@map("users")
 }
@@ -152,4 +154,72 @@ enum SubscriptionStatus {
   INCOMPLETE
   INCOMPLETE_EXPIRED
   UNPAID
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String
+  userId      String
+  scopes      String[]  @default([])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+enum AuditAction {
+  USER_REGISTER
+  USER_LOGIN
+  USER_LOGOUT
+  USER_LOGIN_FAILED
+  USER_BANNED
+  USER_UNBANNED
+  USER_SUSPENDED
+  USER_UNSUSPENDED
+  USER_ROLE_CHANGED
+  USER_DELETED
+  USER_PASSWORD_CHANGED
+  USER_EMAIL_CHANGED
+  ORG_CREATED
+  ORG_UPDATED
+  ORG_DELETED
+  MEMBER_ADDED
+  MEMBER_REMOVED
+  MEMBER_ROLE_CHANGED
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  API_KEY_DELETED
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  SUBSCRIPTION_CANCELED
+  CHECKOUT_STARTED
+  PORTAL_OPENED
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  action      AuditAction
+  userId      String?
+  targetUserId String?
+  organizationId String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json        @default("{}")
+  createdAt   DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([organizationId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
