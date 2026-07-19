@@ -24,7 +24,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/src/generated ./src/generated
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY src ./src
