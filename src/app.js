@@ -9,6 +9,8 @@ import { errorHandler } from './middleware/error.middleware.js'
 import authRouter from './modules/auth/auth.router.js'
 import orgRouter from './modules/org/org.router.js'
 import adminRouter from './modules/admin/admin.router.js'
+import billingRouter from './modules/billing/billing.router.js'
+import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
 
 const app = express()
@@ -31,6 +33,9 @@ if (corsOrigin !== '*') {
 app.use(cors(corsOptions))
 
 app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit prevents oversized payload DoS)
+
+// Stripe webhook — needs raw body, must be before express.json() is applied to this route
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhook)
 
 // Request ID — attach a unique ID to every request for log tracing
 app.use((req, res, next) => {
@@ -97,6 +102,9 @@ app.use('/api/organizations', orgRouter)
 
 app.use('/api/admin', authLimiter)
 app.use('/api/admin', adminRouter)
+
+app.use('/api/billing', authLimiter)
+app.use('/api/billing', billingRouter)
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
 
