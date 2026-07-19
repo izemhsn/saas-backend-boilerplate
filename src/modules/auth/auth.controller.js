@@ -1,10 +1,16 @@
 import * as authService from './auth.service.js'
+import { log as auditLog } from '../audit/audit.service.js'
 
 export const register = async (req, res, next) => {
   try {
     const data = await authService.register(req.validated.body, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
+    })
+    auditLog('USER_REGISTER', {
+      userId: data.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     })
     res.status(201).json({ success: true, data })
   } catch (err) {
@@ -17,6 +23,11 @@ export const login = async (req, res, next) => {
     const data = await authService.login(req.validated.body, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
+    })
+    auditLog('USER_LOGIN', {
+      userId: data.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     })
     res.json({ success: true, data })
   } catch (err) {
@@ -75,6 +86,11 @@ export const resetPassword = async (req, res, next) => {
 export const changePassword = async (req, res, next) => {
   try {
     const data = await authService.changePassword(req.user.id, req.validated.body)
+    auditLog('USER_PASSWORD_CHANGED', {
+      userId: req.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -84,6 +100,12 @@ export const changePassword = async (req, res, next) => {
 export const changeEmail = async (req, res, next) => {
   try {
     const data = await authService.changeEmail(req.user.id, req.validated.body)
+    auditLog('USER_EMAIL_CHANGED', {
+      userId: req.user.id,
+      metadata: { newEmail: req.validated.body.newEmail },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -94,6 +116,11 @@ export const logout = async (req, res, next) => {
   try {
     const refreshToken = req.validated?.body?.refreshToken
     await authService.logout(req.user.id, refreshToken)
+    auditLog('USER_LOGOUT', {
+      userId: req.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data: { message: 'Logged out successfully' } })
   } catch (err) {
     next(err)

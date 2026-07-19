@@ -12,6 +12,7 @@ import adminRouter from './modules/admin/admin.router.js'
 import billingRouter from './modules/billing/billing.router.js'
 import apiKeyRouter from './modules/apikey/apikey.router.js'
 import sessionRouter from './modules/session/session.router.js'
+import auditRouter from './modules/audit/audit.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
 
@@ -114,6 +115,9 @@ app.use('/api/api-keys', apiKeyRouter)
 
 app.use('/api/sessions', authLimiter)
 app.use('/api/sessions', sessionRouter)
+
+app.use('/api/audit', authLimiter)
+app.use('/api/audit', auditRouter)
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
 
