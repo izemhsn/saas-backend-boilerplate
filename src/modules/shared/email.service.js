@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import logger from '../../utils/logger.js'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
@@ -26,7 +27,7 @@ export const sendVerificationEmail = async ({ to, token, name }) => {
   `
 
   if (!resend) {
-    console.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
+    logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
     return { id: 'dev-mode-skipped' }
   }
 
@@ -61,7 +62,7 @@ export const sendPasswordResetEmail = async ({ to, token, name }) => {
   `
 
   if (!resend) {
-    console.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
+    logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
     return { id: 'dev-mode-skipped' }
   }
 

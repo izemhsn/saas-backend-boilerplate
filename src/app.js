@@ -3,8 +3,9 @@ import { randomUUID } from 'crypto'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import morgan from 'morgan'
 import rateLimit from 'express-rate-limit'
+import pinoHttp from 'pino-http'
+import logger from './utils/logger.js'
 import { errorHandler } from './middleware/error.middleware.js'
 import authRouter from './modules/auth/auth.router.js'
 import orgRouter from './modules/org/org.router.js'
@@ -48,17 +49,22 @@ app.use((req, res, next) => {
   next()
 })
 
-// Request logging — concise 'dev' format locally, 'combined' in production, silent under test
-if (process.env.NODE_ENV !== 'test') {
-  morgan.token('id', (req) => req.id)
-  app.use(
-    morgan(
-      process.env.NODE_ENV === 'production'
-        ? ':id :method :url :status :res[content-length] - :response-time ms'
-        : 'dev',
-    ),
-  )
-}
+// Structured request logging via pino-http — JSON in production, pretty in dev, silent in test
+app.use(
+  pinoHttp({
+    logger,
+    customLogLevel: (req, res, err) => {
+      if (err || res.statusCode >= 500) return 'error'
+      if (res.statusCode >= 400) return 'warn'
+      return 'info'
+    },
+    customSuccessMessage: (req, res) =>
+      `${req.method} ${req.url} ${res.statusCode} ${res.responseTime}ms`,
+    customErrorMessage: (req, res, err) =>
+      `${req.method} ${req.url} ${res.statusCode} ${err.message}`,
+    reqCustomProps: (req) => ({ requestId: req.id }),
+  }),
+)
 
 // Health check — for uptime monitoring & load balancers (includes DB ping)
 app.get('/health', async (req, res) => {
