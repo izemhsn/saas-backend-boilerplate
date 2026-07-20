@@ -3,7 +3,7 @@ import { prisma } from '../../config/db.js'
 import { hashPassword, comparePassword, dummyCompare } from '../../utils/hash.js'
 import { signToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt.js'
 import { httpError } from '../../utils/httpError.js'
-import { sendVerificationEmail, sendPasswordResetEmail } from '../shared/email.service.js'
+import { queueVerificationEmail, queuePasswordResetEmail } from '../jobs/email.producer.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -69,7 +69,7 @@ export const register = async ({ name, email, password }, { userAgent, ipAddress
 
   const refreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })
 
-  await sendVerificationEmail({
+  await queueVerificationEmail({
     to: normalizedEmail,
     token: emailVerificationToken,
     name: name.trim(),
@@ -280,7 +280,7 @@ export const resendVerification = async ({ email }) => {
     },
   })
 
-  await sendVerificationEmail({
+  await queueVerificationEmail({
     to: normalizedEmail,
     token: emailVerificationToken,
     name: user.name,
@@ -315,7 +315,7 @@ export const forgotPassword = async ({ email }) => {
     },
   })
 
-  await sendPasswordResetEmail({ to: normalizedEmail, token: resetToken, name: user.name })
+  await queuePasswordResetEmail({ to: normalizedEmail, token: resetToken, name: user.name })
 
   return {
     message: 'If that account exists, a password reset token has been issued.',
@@ -408,7 +408,7 @@ export const changeEmail = async (userId, { newEmail, password }) => {
     },
     select: userSelect,
   })
-  await sendVerificationEmail({
+  await queueVerificationEmail({
     to: normalizedNewEmail,
     token: emailVerificationToken,
     name: user.name,
