@@ -37,7 +37,7 @@ afterAll(async () => {
 
 // Helper: wait for fire-and-forget audit logs to flush
 const flushAuditLogs = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  await new Promise((resolve) => setTimeout(resolve, 300))
 }
 
 describe('GET /api/audit (admin)', () => {

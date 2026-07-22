@@ -1,4 +1,5 @@
 import logger from '../utils/logger.js'
+import { getSentry } from '../config/sentry.js'
 
 // 4-parameter signature = Express recognizes this as error middleware
 // (_next is required to keep the arity even though it is unused)
@@ -9,6 +10,11 @@ export const errorHandler = (err, req, res, _next) => {
 
   if (statusCode >= 500) {
     logger.error({ err, requestId: req.id }, 'Unhandled error')
+
+    const sentry = getSentry()
+    if (sentry) {
+      sentry.captureException(err)
+    }
   } else {
     logger.warn({ err: err.message, statusCode, requestId: req.id }, 'Request error')
   }
