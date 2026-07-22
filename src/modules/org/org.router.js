@@ -11,7 +11,13 @@ import {
   listOrgsSchema,
   listMembersSchema,
 } from './org.schema.js'
+import {
+  createInvitationSchema,
+  listInvitationsSchema,
+  cancelInvitationSchema,
+} from './invitation.schema.js'
 import * as ctrl from './org.controller.js'
+import * as invitationCtrl from './invitation.controller.js'
 
 const router = Router()
 
@@ -54,6 +60,29 @@ router.delete(
   requireTenant,
   requireOrgRole('OWNER', 'ADMIN'),
   ctrl.removeMember,
+)
+
+// Invitations — org-scoped (require OWNER or ADMIN)
+router.post(
+  '/:orgId/invitations',
+  validate(createInvitationSchema),
+  requireTenant,
+  requireOrgRole('OWNER', 'ADMIN'),
+  invitationCtrl.createInvitation,
+)
+router.get(
+  '/:orgId/invitations',
+  validate(listInvitationsSchema),
+  requireTenant,
+  requireOrgRole('OWNER', 'ADMIN'),
+  invitationCtrl.listInvitations,
+)
+router.delete(
+  '/:orgId/invitations/:invitationId',
+  validate(cancelInvitationSchema),
+  requireTenant,
+  requireOrgRole('OWNER', 'ADMIN'),
+  invitationCtrl.cancelInvitation,
 )
 
 export default router

@@ -21,3 +21,6 @@ export const queueVerificationEmail = ({ to, token, name }) =>
 
 export const queuePasswordResetEmail = ({ to, token, name }) =>
   enqueueEmail('sendPasswordResetEmail', { to, token, name })
+
+export const queueOrgInvitationEmail = ({ to, orgName, inviterName, role, token }) =>
+  enqueueEmail('sendOrgInvitationEmail', { to, orgName, inviterName, role, token })

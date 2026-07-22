@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq'
 import { getRedisConnection } from '../../config/redis.js'
 import logger from '../../utils/logger.js'
-import { sendVerificationEmail, sendPasswordResetEmail } from '../shared/email.service.js'
+import { sendVerificationEmail, sendPasswordResetEmail, sendOrgInvitationEmail } from '../shared/email.service.js'
 
 const QUEUE_NAME = 'email'
 
@@ -18,6 +18,9 @@ const processEmailJob = async (job) => {
       break
     case 'sendPasswordResetEmail':
       await sendPasswordResetEmail(data)
+      break
+    case 'sendOrgInvitationEmail':
+      await sendOrgInvitationEmail(data)
       break
     default:
       logger.warn({ jobId: job.id, jobName: name }, 'Unknown email job type')
