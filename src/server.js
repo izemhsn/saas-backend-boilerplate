@@ -1,6 +1,7 @@
 import app from './app.js'
 import { prisma } from './config/db.js'
 import logger from './utils/logger.js'
+import { getSentry } from './config/sentry.js'
 
 const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET']
 const missing = REQUIRED_ENV.filter((key) => !process.env[key])
@@ -52,10 +53,14 @@ process.on('SIGINT', () => shutdown('SIGINT'))
 // Catch unhandled errors so the process never silently hangs
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'Unhandled promise rejection')
+  const sentry = getSentry()
+  if (sentry) sentry.captureException(reason)
   shutdown('unhandledRejection')
 })
 
 process.on('uncaughtException', (err) => {
   logger.error({ err }, 'Uncaught exception')
+  const sentry = getSentry()
+  if (sentry) sentry.captureException(err)
   shutdown('uncaughtException')
 })

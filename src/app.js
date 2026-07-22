@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { randomUUID } from 'crypto'
+import * as Sentry from '@sentry/node'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -14,10 +15,20 @@ import billingRouter from './modules/billing/billing.router.js'
 import apiKeyRouter from './modules/apikey/apikey.router.js'
 import sessionRouter from './modules/session/session.router.js'
 import auditRouter from './modules/audit/audit.router.js'
+import invitationRouter from './modules/org/invitation.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
+import { initSentry } from './config/sentry.js'
 
 const app = express()
+
+// Initialize Sentry — must happen before any middleware
+initSentry()
+
+// Sentry request handler — must be the first middleware on the app
+if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
+  app.use(Sentry.setupExpressErrorHandler(app))
+}
 
 // Trust the reverse proxy (load balancer / ingress) so req.ip and rate limiting
 // use the real client IP from X-Forwarded-For. Configure hop count via TRUST_PROXY.
@@ -125,7 +136,15 @@ app.use('/api/sessions', sessionRouter)
 app.use('/api/audit', authLimiter)
 app.use('/api/audit', auditRouter)
 
+app.use('/api/invitations', authLimiter)
+app.use('/api/invitations', invitationRouter)
+
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
+
+// Sentry error handler — must be before our custom errorHandler
+if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
+  app.use(Sentry.expressErrorHandler())
+}
 
 app.use(errorHandler) // Must be LAST
 

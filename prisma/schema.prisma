@@ -40,6 +40,8 @@ model User {
   subscriptions Subscription[]
   apiKeys       ApiKey[]
   auditLogs     AuditLog[]
+  sentInvitations     OrganizationInvitation[] @relation("InvitationInviter")
+  receivedInvitations OrganizationInvitation[] @relation("InvitationInvitee")
 
   @@map("users")
 }
@@ -71,6 +73,7 @@ model Organization {
 
   owner    User                 @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members  OrganizationMember[]
+  invitations OrganizationInvitation[]
 
   @@map("organizations")
 }
@@ -194,6 +197,10 @@ enum AuditAction {
   MEMBER_ADDED
   MEMBER_REMOVED
   MEMBER_ROLE_CHANGED
+  MEMBER_INVITED
+  INVITATION_ACCEPTED
+  INVITATION_DECLINED
+  INVITATION_CANCELED
   API_KEY_CREATED
   API_KEY_REVOKED
   API_KEY_DELETED
@@ -222,4 +229,38 @@ model AuditLog {
   @@index([organizationId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELED
+}
+
+model OrganizationInvitation {
+  id              String           @id @default(cuid())
+  organizationId  String
+  inviterId       String
+  inviteeEmail    String
+  inviteeId       String?
+  role            OrgRole          @default(MEMBER)
+  status          InvitationStatus @default(PENDING)
+  token           String           @unique
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  declinedAt      DateTime?
+  canceledAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inviter      User          @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee      User?         @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([inviteeEmail])
+  @@index([status])
+  @@map("organization_invitations")
 }

@@ -75,3 +75,37 @@ export const sendPasswordResetEmail = async ({ to, token, name }) => {
 
   if (error) throw new Error(`Failed to send password reset email: ${error.message}`)
 }
+
+export const sendOrgInvitationEmail = async ({ to, orgName, inviterName, role, token }) => {
+  const inviteUrl = `${APP_URL}/invitations/accept?token=${token}`
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2>You're invited to join ${orgName}</h2>
+      <p>${inviterName} has invited you to join <strong>${orgName}</strong> as a <strong>${role}</strong>.</p>
+      <a href="${inviteUrl}"
+         style="display: inline-block; background: #4f46e5; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
+        Accept Invitation
+      </a>
+      <p>Or copy this link into your browser:</p>
+      <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
+        This invitation expires in 7 days. If you weren't expecting this invitation, you can safely ignore this email.
+      </p>
+    </div>
+  `
+
+  if (!resend) {
+    logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
+    return { id: 'dev-mode-skipped' }
+  }
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to,
+    subject: `You're invited to join ${orgName}`,
+    html,
+  })
+
+  if (error) throw new Error(`Failed to send org invitation email: ${error.message}`)
+}
