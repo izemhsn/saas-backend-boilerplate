@@ -14,8 +14,9 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  password  String
+  password  String?
   name      String?
+  googleId  String?  @unique
   role                   Role     @default(USER)
   emailVerified          Boolean  @default(false)
   emailVerificationToken String?  @unique
@@ -181,6 +182,7 @@ model ApiKey {
 enum AuditAction {
   USER_REGISTER
   USER_LOGIN
+  USER_OAUTH_LOGIN
   USER_LOGOUT
   USER_LOGIN_FAILED
   USER_BANNED

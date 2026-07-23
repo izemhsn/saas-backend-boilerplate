@@ -135,3 +135,30 @@ export const getMe = async (req, res, next) => {
     next(err)
   }
 }
+
+export const googleAuthUrl = async (req, res, next) => {
+  try {
+    const data = authService.getGoogleAuthUrl()
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const googleLogin = async (req, res, next) => {
+  try {
+    const data = await authService.googleLogin(req.validated.body, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    })
+    auditLog('USER_OAUTH_LOGIN', {
+      userId: data.user.id,
+      metadata: { provider: 'google' },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
