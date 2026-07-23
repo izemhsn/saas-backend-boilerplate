@@ -21,7 +21,7 @@ export const getUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    const data = await adminService.updateUser(req.validated.params.userId, req.validated.body)
+    const data = await adminService.updateUser(req.validated.params.userId, req.validated.body, req.user.id)
     const body = req.validated.body
     if (body.banned === true) {
       auditLog('USER_BANNED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
@@ -46,7 +46,7 @@ export const updateUser = async (req, res, next) => {
 
 export const deleteUser = async (req, res, next) => {
   try {
-    const data = await adminService.deleteUser(req.validated.params.userId)
+    const data = await adminService.deleteUser(req.validated.params.userId, req.user.id)
     auditLog('USER_DELETED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
     res.json({ success: true, data })
   } catch (err) {
