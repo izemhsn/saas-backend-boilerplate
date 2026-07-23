@@ -79,3 +79,9 @@ export const resetPasswordSchema = z.object({
       .regex(/[0-9]/, 'Must contain a number'),
   }),
 })
+
+export const googleLoginSchema = z.object({
+  body: z.object({
+    code: z.string().min(1, 'Authorization code is required'),
+  }),
+})
