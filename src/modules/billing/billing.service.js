@@ -240,6 +240,12 @@ const upsertSubscription = async (userId, planId, stripeSub) => {
   const plan = await prisma.plan.findUnique({ where: { id: planId }, select: { id: true } })
   if (!plan) return
 
+  // Stripe moved current_period_start/end to subscription items in newer API versions.
+  // Fall back to the first item if the top-level fields are absent.
+  const item = stripeSub.items?.data?.[0]
+  const periodStart = stripeSub.current_period_start ?? item?.current_period_start
+  const periodEnd = stripeSub.current_period_end ?? item?.current_period_end
+
   const data = {
     userId,
     planId,
@@ -247,12 +253,8 @@ const upsertSubscription = async (userId, planId, stripeSub) => {
     stripeCustomerId: stripeSub.customer,
     status: mapStripeStatus(stripeSub.status),
     trialEndsAt: stripeSub.trial_end ? new Date(stripeSub.trial_end * 1000) : null,
-    currentPeriodStart: stripeSub.current_period_start
-      ? new Date(stripeSub.current_period_start * 1000)
-      : null,
-    currentPeriodEnd: stripeSub.current_period_end
-      ? new Date(stripeSub.current_period_end * 1000)
-      : null,
+    currentPeriodStart: periodStart ? new Date(periodStart * 1000) : null,
+    currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
     canceledAt: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000) : null,
   }
 

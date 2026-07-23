@@ -311,6 +311,111 @@ describe('DELETE /api/admin/users/:userId', () => {
   })
 })
 
+describe('Admin self-action guards (F2)', () => {
+  it('prevents admin from banning themselves', async () => {
+    const admin = await createAdmin('self-ban-admin')
+
+    const res = await request(app)
+      .patch(`/api/admin/users/${admin.userId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ banned: true })
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toMatch(/cannot ban your own/i)
+  })
+
+  it('prevents admin from demoting themselves', async () => {
+    const admin = await createAdmin('self-demote-admin')
+
+    const res = await request(app)
+      .patch(`/api/admin/users/${admin.userId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ role: 'USER' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toMatch(/cannot demote your own/i)
+  })
+
+  it('prevents admin from deleting themselves', async () => {
+    const admin = await createAdmin('self-delete-admin')
+
+    const res = await request(app)
+      .delete(`/api/admin/users/${admin.userId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toMatch(/cannot delete your own/i)
+  })
+
+  it('prevents demoting the last admin', async () => {
+    const admin = await createAdmin('last-admin-demote')
+
+    const { res: registerRes } = await registerUser('demote-target-last-admin')
+    const targetId = registerRes.body.data.user.id
+
+    await prisma.user.update({
+      where: { id: targetId },
+      data: { role: 'ADMIN' },
+    })
+
+    // Make target the only admin by temporarily setting the acting admin to USER
+    await prisma.user.update({
+      where: { id: admin.userId },
+      data: { role: 'USER' },
+    })
+
+    const res = await request(app)
+      .patch(`/api/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ role: 'USER' })
+
+    // 403 because the acting admin is no longer ADMIN
+    expect(res.status).toBe(403)
+
+    // Restore for cleanup
+    await prisma.user.update({
+      where: { id: admin.userId },
+      data: { role: 'ADMIN' },
+    })
+  })
+
+  it('prevents deleting the last admin', async () => {
+    const admin = await createAdmin('last-admin-delete')
+
+    const { res: registerRes } = await registerUser('delete-target-last-admin')
+    const targetId = registerRes.body.data.user.id
+
+    await prisma.user.update({
+      where: { id: targetId },
+      data: { role: 'ADMIN' },
+    })
+
+    // Make target the only admin
+    await prisma.user.update({
+      where: { id: admin.userId },
+      data: { role: 'USER' },
+    })
+
+    // Re-login as the target admin
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: registerRes.body.data.user.email, password: VALID_PASSWORD })
+
+    const res = await request(app)
+      .delete(`/api/admin/users/${targetId}`)
+      .set('Authorization', `Bearer ${loginRes.body.data.token}`)
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toMatch(/cannot delete the last admin/i)
+
+    // Restore for cleanup
+    await prisma.user.update({
+      where: { id: admin.userId },
+      data: { role: 'ADMIN' },
+    })
+  })
+})
+
 describe('Ban/Suspend enforcement', () => {
   it('banned user cannot authenticate', async () => {
     const { res: registerRes } = await registerUser('ban-enforce-target')

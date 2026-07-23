@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { getEmailQueue } from '../src/modules/jobs/queues.js'
+import { getEmailQueue, getMaintenanceQueue } from '../src/modules/jobs/queues.js'
 import { queueVerificationEmail, queuePasswordResetEmail } from '../src/modules/jobs/email.producer.js'
+import { scheduleRefreshTokenCleanup } from '../src/modules/jobs/maintenance.producer.js'
 import { sendVerificationEmail, sendPasswordResetEmail } from '../src/modules/shared/email.service.js'
 
 vi.mock('../src/config/redis.js', () => ({
@@ -69,5 +70,25 @@ describe('Email worker processor', () => {
     const data = { to: 'test@example.com', token: 'abc123', name: 'Test' }
     await sendPasswordResetEmail(data)
     expect(sendPasswordResetEmail).toHaveBeenCalledWith(data)
+  })
+})
+
+describe('Maintenance queue configuration', () => {
+  it('creates a queue with correct name', () => {
+    const queue = getMaintenanceQueue()
+    expect(queue.name).toBe('maintenance')
+  })
+
+  it('returns the same queue instance (singleton)', () => {
+    const q1 = getMaintenanceQueue()
+    const q2 = getMaintenanceQueue()
+    expect(q1).toBe(q2)
+  })
+})
+
+describe('Refresh token cleanup scheduling (F4)', () => {
+  it('scheduleRefreshTokenCleanup returns early in test mode', async () => {
+    const result = await scheduleRefreshTokenCleanup()
+    expect(result).toBeUndefined()
   })
 })

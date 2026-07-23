@@ -1,13 +1,15 @@
 import { Queue } from 'bullmq'
 import { getRedisConnection } from '../../config/redis.js'
 
-const QUEUE_NAME = 'email'
+const EMAIL_QUEUE_NAME = 'email'
+const MAINTENANCE_QUEUE_NAME = 'maintenance'
 
-let queue = null
+let emailQueue = null
+let maintenanceQueue = null
 
 export const getEmailQueue = () => {
-  if (!queue) {
-    queue = new Queue(QUEUE_NAME, {
+  if (!emailQueue) {
+    emailQueue = new Queue(EMAIL_QUEUE_NAME, {
       connection: getRedisConnection(),
       defaultJobOptions: {
         attempts: 3,
@@ -20,9 +22,28 @@ export const getEmailQueue = () => {
       },
     })
   }
-  return queue
+  return emailQueue
+}
+
+export const getMaintenanceQueue = () => {
+  if (!maintenanceQueue) {
+    maintenanceQueue = new Queue(MAINTENANCE_QUEUE_NAME, {
+      connection: getRedisConnection(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 200 },
+      },
+    })
+  }
+  return maintenanceQueue
 }
 
 export const QUEUE_NAMES = {
-  EMAIL: QUEUE_NAME,
+  EMAIL: EMAIL_QUEUE_NAME,
+  MAINTENANCE: MAINTENANCE_QUEUE_NAME,
 }

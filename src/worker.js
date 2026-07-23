@@ -1,5 +1,7 @@
 import 'dotenv/config'
 import { startEmailWorker } from './modules/jobs/email.worker.js'
+import { startMaintenanceWorker } from './modules/jobs/maintenance.worker.js'
+import { scheduleRefreshTokenCleanup } from './modules/jobs/maintenance.producer.js'
 import { closeRedisConnection } from './config/redis.js'
 import logger from './utils/logger.js'
 
@@ -11,6 +13,10 @@ if (missing.length) {
 }
 
 startEmailWorker()
+startMaintenanceWorker()
+scheduleRefreshTokenCleanup().catch((err) =>
+  logger.error({ err }, 'Failed to schedule refresh token cleanup'),
+)
 
 let shuttingDown = false
 const shutdown = async (signal) => {

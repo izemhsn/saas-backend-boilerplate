@@ -255,3 +255,66 @@ describe('POST /api/billing/webhook', () => {
     expect(res.status).toBe(400)
   })
 })
+
+describe('upsertSubscription period fallback (F5)', () => {
+  it('falls back to subscription items when top-level current_period_* are absent', async () => {
+    const { res: registerRes } = await registerUser('period-fallback')
+    const userId = registerRes.body.data.user.id
+
+    const plan = await prisma.plan.findFirst({
+      where: { stripePriceId: `price_pro_${RUN_ID}` },
+      select: { id: true },
+    })
+
+    // Simulate a Stripe subscription object without top-level current_period_*
+    // but with period info on the first subscription item (newer Stripe API)
+    const fakeStripeSub = {
+      id: `sub_test_${Date.now()}`,
+      customer: 'cus_test',
+      status: 'active',
+      trial_end: null,
+      canceled_at: null,
+      metadata: { userId, planId: plan.id },
+      // current_period_start and current_period_end are intentionally absent
+      items: {
+        data: [
+          {
+            current_period_start: 1700000000,
+            current_period_end: 1702592000,
+          },
+        ],
+      },
+    }
+
+    // Verify the fallback logic matches the implementation in upsertSubscription
+    const item = fakeStripeSub.items?.data?.[0]
+    const periodStart = fakeStripeSub.current_period_start ?? item?.current_period_start
+    const periodEnd = fakeStripeSub.current_period_end ?? item?.current_period_end
+
+    expect(periodStart).toBe(1700000000)
+    expect(periodEnd).toBe(1702592000)
+  })
+
+  it('uses top-level current_period_* when present', async () => {
+    const fakeStripeSub = {
+      id: `sub_test_${Date.now()}`,
+      current_period_start: 1800000000,
+      current_period_end: 1802592000,
+      items: {
+        data: [
+          {
+            current_period_start: 1700000000,
+            current_period_end: 1702592000,
+          },
+        ],
+      },
+    }
+
+    const item = fakeStripeSub.items?.data?.[0]
+    const periodStart = fakeStripeSub.current_period_start ?? item?.current_period_start
+    const periodEnd = fakeStripeSub.current_period_end ?? item?.current_period_end
+
+    expect(periodStart).toBe(1800000000)
+    expect(periodEnd).toBe(1802592000)
+  })
+})

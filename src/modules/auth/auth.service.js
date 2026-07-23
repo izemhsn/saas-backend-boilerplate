@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from 'crypto'
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import { prisma } from '../../config/db.js'
 import { hashPassword, comparePassword, dummyCompare } from '../../utils/hash.js'
 import { signToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt.js'
@@ -252,10 +253,17 @@ export const verifyEmail = async ({ token }) => {
     updateData.pendingEmail = null
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: updateData,
-  })
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: updateData,
+    })
+  } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw httpError('This email address is already in use. Please request a new change email.', 409)
+    }
+    throw err
+  }
   return { message: 'Email verified successfully' }
 }
 

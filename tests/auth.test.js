@@ -595,3 +595,40 @@ describe('requireVerifiedEmail() middleware', () => {
     expect(called).toBe(true)
   })
 })
+
+describe('verifyEmail pending-email race condition (F3)', () => {
+  it('returns 409 when pendingEmail was claimed by another user', async () => {
+    // User A requests email change to newemail@example.com
+    const { res: resA } = await registerUser('race-user-a')
+    const tokenA = resA.body.data.token
+    const userIdA = resA.body.data.user.id
+
+    const newEmail = emailFor('race-new-email')
+
+    const changeRes = await request(app)
+      .post('/api/auth/change-email')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ newEmail, password: VALID_PASSWORD })
+
+    expect(changeRes.status).toBe(200)
+    const verificationToken = changeRes.body.data.emailVerificationToken
+
+    // User B registers with the same email before A verifies
+    await registerUser('race-user-b', { email: newEmail })
+    createdEmails.push(newEmail)
+
+    // User A tries to verify — should get 409
+    const verifyRes = await request(app)
+      .post('/api/auth/verify-email')
+      .send({ token: verificationToken })
+
+    expect(verifyRes.status).toBe(409)
+    expect(verifyRes.body.message).toMatch(/already in use/i)
+
+    // Clean up pendingEmail so user can be deleted
+    await prisma.user.update({
+      where: { id: userIdA },
+      data: { pendingEmail: null, emailVerificationToken: null, emailVerificationExpires: null },
+    })
+  })
+})

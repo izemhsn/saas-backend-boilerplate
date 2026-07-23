@@ -65,12 +65,24 @@ export const getUser = async (userId) => {
   return { user }
 }
 
-export const updateUser = async (userId, data) => {
+export const updateUser = async (userId, data, actingAdminId) => {
+  if (userId === actingAdminId) {
+    if (data.banned === true) throw httpError('You cannot ban your own account', 400)
+    if (data.role !== undefined && data.role !== 'ADMIN')
+      throw httpError('You cannot demote your own admin account', 400)
+  }
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, role: true },
   })
   if (!user) throw httpError('User not found', 404)
+
+  // Prevent demoting the last admin
+  if (data.role !== undefined && data.role !== 'ADMIN' && user.role === 'ADMIN') {
+    const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } })
+    if (adminCount <= 1) throw httpError('Cannot demote the last admin', 400)
+  }
 
   const updateData = {}
 
@@ -93,12 +105,21 @@ export const updateUser = async (userId, data) => {
   return { user: updated }
 }
 
-export const deleteUser = async (userId) => {
+export const deleteUser = async (userId, actingAdminId) => {
+  if (userId === actingAdminId)
+    throw httpError('You cannot delete your own account', 400)
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true },
+    select: { id: true, role: true },
   })
   if (!user) throw httpError('User not found', 404)
+
+  // Prevent deleting the last admin
+  if (user.role === 'ADMIN') {
+    const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } })
+    if (adminCount <= 1) throw httpError('Cannot delete the last admin', 400)
+  }
 
   await prisma.user.delete({ where: { id: userId } })
   return { message: 'User deleted successfully' }
