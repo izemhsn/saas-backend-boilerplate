@@ -14,6 +14,7 @@ const keySelect = {
   lastUsedAt: true,
   expiresAt: true,
   revokedAt: true,
+  deletedAt: true,
   createdAt: true,
   updatedAt: true,
 }
@@ -49,7 +50,7 @@ export const createApiKey = async (userId, { name, scopes = [], expiresAt = null
 export const listApiKeys = async (userId, query = {}) => {
   const { page, limit, search, sort, order } = query
 
-  const where = { userId, revokedAt: null }
+  const where = { userId, revokedAt: null, deletedAt: null }
 
   const searchClause = buildSearch(search, ['name', 'keyPrefix'])
   if (searchClause) where.OR = searchClause
@@ -72,7 +73,7 @@ export const listApiKeys = async (userId, query = {}) => {
 
 export const getApiKey = async (userId, keyId) => {
   const apiKey = await prisma.apiKey.findFirst({
-    where: { id: keyId, userId },
+    where: { id: keyId, userId, deletedAt: null },
     select: keySelect,
   })
   if (!apiKey) throw httpError('API key not found', 404)
@@ -82,7 +83,7 @@ export const getApiKey = async (userId, keyId) => {
 
 export const revokeApiKey = async (userId, keyId) => {
   const apiKey = await prisma.apiKey.findFirst({
-    where: { id: keyId, userId, revokedAt: null },
+    where: { id: keyId, userId, revokedAt: null, deletedAt: null },
     select: { id: true },
   })
   if (!apiKey) throw httpError('API key not found or already revoked', 404)
@@ -98,13 +99,29 @@ export const revokeApiKey = async (userId, keyId) => {
 
 export const deleteApiKey = async (userId, keyId) => {
   const apiKey = await prisma.apiKey.findFirst({
-    where: { id: keyId, userId },
+    where: { id: keyId, userId, deletedAt: null },
     select: { id: true },
   })
   if (!apiKey) throw httpError('API key not found', 404)
 
-  await prisma.apiKey.delete({ where: { id: keyId } })
+  await prisma.apiKey.update({ where: { id: keyId }, data: { deletedAt: new Date() } })
   return { message: 'API key deleted successfully' }
+}
+
+export const restoreApiKey = async (userId, keyId) => {
+  const apiKey = await prisma.apiKey.findFirst({
+    where: { id: keyId, userId, deletedAt: { not: null } },
+    select: { id: true },
+  })
+  if (!apiKey) throw httpError('Deleted API key not found', 404)
+
+  const restored = await prisma.apiKey.update({
+    where: { id: keyId },
+    data: { deletedAt: null },
+    select: keySelect,
+  })
+
+  return { apiKey: restored }
 }
 
 export const verifyApiKey = async (rawKey) => {
@@ -114,8 +131,8 @@ export const verifyApiKey = async (rawKey) => {
 
   const keyHash = hashKey(rawKey)
 
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { keyHash },
+  const apiKey = await prisma.apiKey.findFirst({
+    where: { keyHash, deletedAt: null },
     select: {
       id: true,
       userId: true,
@@ -123,7 +140,7 @@ export const verifyApiKey = async (rawKey) => {
       expiresAt: true,
       revokedAt: true,
       user: {
-        select: { id: true, email: true, role: true, banned: true, suspendedUntil: true },
+        select: { id: true, email: true, role: true, banned: true, suspendedUntil: true, deletedAt: true },
       },
     },
   })
@@ -132,6 +149,7 @@ export const verifyApiKey = async (rawKey) => {
   if (apiKey.revokedAt) return null
   if (apiKey.expiresAt && apiKey.expiresAt <= new Date()) return null
   if (apiKey.user.banned) return null
+  if (apiKey.user.deletedAt) return null
   if (apiKey.user.suspendedUntil && apiKey.user.suspendedUntil > new Date()) return null
 
   // Update lastUsedAt (fire-and-forget, don't block the request)

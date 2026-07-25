@@ -13,5 +13,6 @@ router.get('/users', validate(listUsersSchema), ctrl.listUsers)
 router.get('/users/:userId', validate(userIdParamSchema), ctrl.getUser)
 router.patch('/users/:userId', validate(updateUserSchema), ctrl.updateUser)
 router.delete('/users/:userId', validate(userIdParamSchema), ctrl.deleteUser)
+router.post('/users/:userId/restore', validate(userIdParamSchema), ctrl.restoreUser)
 
 export default router

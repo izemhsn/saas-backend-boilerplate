@@ -50,8 +50,8 @@ const revokeAllRefreshTokens = async (userId) => {
 
 export const register = async ({ name, email, password }, { userAgent, ipAddress } = {}) => {
   const normalizedEmail = normalizeEmail(email)
-  const existing = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
+  const existing = await prisma.user.findFirst({
+    where: { email: normalizedEmail, deletedAt: null },
     select: { id: true },
   })
   if (existing) throw httpError('Email already registered', 409)
@@ -91,8 +91,8 @@ export const register = async ({ name, email, password }, { userAgent, ipAddress
 }
 
 export const login = async ({ email, password }, { userAgent, ipAddress } = {}) => {
-  const user = await prisma.user.findUnique({
-    where: { email: normalizeEmail(email) },
+  const user = await prisma.user.findFirst({
+    where: { email: normalizeEmail(email), deletedAt: null },
     select: {
       id: true,
       email: true,
@@ -276,8 +276,8 @@ export const verifyEmail = async ({ token }) => {
 
 export const resendVerification = async ({ email }) => {
   const normalizedEmail = normalizeEmail(email)
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
+  const user = await prisma.user.findFirst({
+    where: { email: normalizedEmail, deletedAt: null },
     select: { id: true, name: true, emailVerified: true },
   })
 
@@ -311,8 +311,8 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 export const forgotPassword = async ({ email }) => {
   const normalizedEmail = normalizeEmail(email)
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
+  const user = await prisma.user.findFirst({
+    where: { email: normalizedEmail, deletedAt: null },
     select: { id: true, name: true },
   })
 
@@ -404,8 +404,8 @@ export const changeEmail = async (userId, { newEmail, password }) => {
   if (!valid) throw httpError('Password is incorrect', 401)
 
   const normalizedNewEmail = normalizeEmail(newEmail)
-  const taken = await prisma.user.findUnique({
-    where: { email: normalizedNewEmail },
+  const taken = await prisma.user.findFirst({
+    where: { email: normalizedNewEmail, deletedAt: null },
     select: { id: true },
   })
   if (taken) throw httpError('Email already in use', 409)
@@ -485,15 +485,15 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
   const name = payload.name ?? null
 
   // 1. User already linked to this Google account — log them in
-  let user = await prisma.user.findUnique({
-    where: { googleId },
+  let user = await prisma.user.findFirst({
+    where: { googleId, deletedAt: null },
     select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
   })
 
   // 2. No googleId match, but email exists — link the Google account
   if (!user) {
-    user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
+    user = await prisma.user.findFirst({
+      where: { email: normalizedEmail, deletedAt: null },
       select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true, googleId: true },
     })
     if (user) {

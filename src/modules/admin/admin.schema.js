@@ -6,7 +6,7 @@ export const listUsersSchema = z.object({
     extra: {
       search: z.string().optional(),
       role: z.enum(['USER', 'ADMIN']).optional(),
-      status: z.enum(['active', 'banned', 'suspended']).optional(),
+      status: z.enum(['active', 'banned', 'suspended', 'deleted']).optional(),
     },
   }),
 })

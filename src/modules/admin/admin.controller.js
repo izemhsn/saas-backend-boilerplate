@@ -53,3 +53,13 @@ export const deleteUser = async (req, res, next) => {
     next(err)
   }
 }
+
+export const restoreUser = async (req, res, next) => {
+  try {
+    const data = await adminService.restoreUser(req.validated.params.userId)
+    auditLog('USER_RESTORED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
