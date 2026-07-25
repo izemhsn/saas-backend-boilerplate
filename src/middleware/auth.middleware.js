@@ -17,8 +17,8 @@ export const authenticate = async (req, res, next) => {
     const decoded = verifyToken(token) // { id, email, role, tokenVersion }
 
     // Verify the user still exists and the token version matches
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
+    const user = await prisma.user.findFirst({
+      where: { id: decoded.id, deletedAt: null },
       select: { id: true, email: true, role: true, tokenVersion: true, banned: true, suspendedUntil: true },
     })
 
@@ -68,11 +68,11 @@ export const requireVerifiedEmail = async (req, res, next) => {
     return res.status(401).json({ success: false, message: 'No token provided' })
   }
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
+    const user = await prisma.user.findFirst({
+      where: { id: req.user.id, deletedAt: null },
       select: { emailVerified: true },
     })
-    if (!user?.emailVerified) {
+    if (!user || !user?.emailVerified) {
       return res.status(403).json({ success: false, message: 'Email not verified' })
     }
     next()

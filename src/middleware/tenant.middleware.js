@@ -18,7 +18,45 @@ export const requireTenant = async (req, res, next) => {
       select: {
         role: true,
         organization: {
-          select: { id: true, name: true, slug: true, ownerId: true },
+          select: { id: true, name: true, slug: true, ownerId: true, deletedAt: true },
+        },
+      },
+    })
+
+    if (!membership || membership.organization.deletedAt) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this organization' })
+    }
+
+    req.tenant = {
+      id: membership.organization.id,
+      name: membership.organization.name,
+      slug: membership.organization.slug,
+      ownerId: membership.organization.ownerId,
+      role: membership.role,
+    }
+    next()
+  } catch (err) {
+    next(err)
+  }
+}
+
+// Same as requireTenant but allows access to soft-deleted organizations.
+// Used for restore operations. Must run after `authenticate`.
+export const requireTenantIncludeDeleted = async (req, res, next) => {
+  const orgId = req.params.orgId
+  if (!orgId) {
+    return res.status(400).json({ success: false, message: 'Organization ID is required' })
+  }
+
+  try {
+    const membership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: { organizationId: orgId, userId: req.user.id },
+      },
+      select: {
+        role: true,
+        organization: {
+          select: { id: true, name: true, slug: true, ownerId: true, deletedAt: true },
         },
       },
     })

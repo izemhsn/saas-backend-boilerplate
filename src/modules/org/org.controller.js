@@ -49,6 +49,16 @@ export const deleteOrganization = async (req, res, next) => {
   }
 }
 
+export const restoreOrganization = async (req, res, next) => {
+  try {
+    const data = await orgService.restoreOrganization(req.tenant.id)
+    auditLog('ORG_RESTORED', { userId: req.user.id, organizationId: req.tenant.id, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export const listMembers = async (req, res, next) => {
   try {
     const data = await orgService.listMembers(req.tenant.id, req.validated?.query)

@@ -21,8 +21,8 @@ const memberSelect = {
 }
 
 export const createOrganization = async (userId, { name, slug }) => {
-  const existing = await prisma.organization.findUnique({
-    where: { slug },
+  const existing = await prisma.organization.findFirst({
+    where: { slug, deletedAt: null },
     select: { id: true },
   })
   if (existing) throw httpError('Slug already taken', 409)
@@ -45,7 +45,7 @@ export const createOrganization = async (userId, { name, slug }) => {
 export const listOrganizations = async (userId, query = {}) => {
   const { page, limit, search, sort, order } = query
 
-  const where = { userId }
+  const where = { userId, organization: { deletedAt: null } }
 
   const searchClause = buildSearch(search, ['organization.name', 'organization.slug'])
   if (searchClause) where.OR = searchClause
@@ -73,8 +73,8 @@ export const listOrganizations = async (userId, query = {}) => {
 }
 
 export const getOrganization = async (orgId) => {
-  const organization = await prisma.organization.findUnique({
-    where: { id: orgId },
+  const organization = await prisma.organization.findFirst({
+    where: { id: orgId, deletedAt: null },
     select: orgSelect,
   })
   if (!organization) throw httpError('Organization not found', 404)
@@ -84,8 +84,8 @@ export const getOrganization = async (orgId) => {
 
 export const updateOrganization = async (orgId, { name, slug }) => {
   if (slug) {
-    const existing = await prisma.organization.findUnique({
-      where: { slug },
+    const existing = await prisma.organization.findFirst({
+      where: { slug, deletedAt: null },
       select: { id: true },
     })
     if (existing && existing.id !== orgId) throw httpError('Slug already taken', 409)
@@ -105,8 +105,24 @@ export const updateOrganization = async (orgId, { name, slug }) => {
 }
 
 export const deleteOrganization = async (orgId) => {
-  await prisma.organization.delete({ where: { id: orgId } })
+  await prisma.organization.update({ where: { id: orgId }, data: { deletedAt: new Date() } })
   return { message: 'Organization deleted successfully' }
+}
+
+export const restoreOrganization = async (orgId) => {
+  const org = await prisma.organization.findFirst({
+    where: { id: orgId, deletedAt: { not: null } },
+    select: { id: true },
+  })
+  if (!org) throw httpError('Deleted organization not found', 404)
+
+  await prisma.organization.update({
+    where: { id: orgId },
+    data: { deletedAt: null },
+    select: orgSelect,
+  })
+
+  return { message: 'Organization restored successfully' }
 }
 
 export const listMembers = async (orgId, query = {}) => {

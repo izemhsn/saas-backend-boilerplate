@@ -13,5 +13,6 @@ router.get('/', validate(listApiKeysSchema), ctrl.listApiKeys)
 router.get('/:keyId', validate(keyIdParamSchema), ctrl.getApiKey)
 router.post('/:keyId/revoke', validate(keyIdParamSchema), ctrl.revokeApiKey)
 router.delete('/:keyId', validate(keyIdParamSchema), ctrl.deleteApiKey)
+router.post('/:keyId/restore', validate(keyIdParamSchema), ctrl.restoreApiKey)
 
 export default router

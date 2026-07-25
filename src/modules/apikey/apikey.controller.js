@@ -48,3 +48,12 @@ export const deleteApiKey = async (req, res, next) => {
     next(err)
   }
 }
+
+export const restoreApiKey = async (req, res, next) => {
+  try {
+    const data = await apiKeyService.restoreApiKey(req.user.id, req.validated.params.keyId)
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}

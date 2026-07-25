@@ -31,6 +31,7 @@ model User {
   banned                 Boolean  @default(false)
   bannedAt               DateTime?
   suspendedUntil         DateTime?
+  deletedAt              DateTime?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -71,6 +72,7 @@ model Organization {
   name      String
   slug      String   @unique
   ownerId   String
+  deletedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -172,6 +174,7 @@ model ApiKey {
   lastUsedAt  DateTime?
   expiresAt   DateTime?
   revokedAt   DateTime?
+  deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -193,11 +196,13 @@ enum AuditAction {
   USER_UNSUSPENDED
   USER_ROLE_CHANGED
   USER_DELETED
+  USER_RESTORED
   USER_PASSWORD_CHANGED
   USER_EMAIL_CHANGED
   ORG_CREATED
   ORG_UPDATED
   ORG_DELETED
+  ORG_RESTORED
   MEMBER_ADDED
   MEMBER_REMOVED
   MEMBER_ROLE_CHANGED
