@@ -43,6 +43,8 @@ model User {
   auditLogs     AuditLog[]
   sentInvitations     OrganizationInvitation[] @relation("InvitationInviter")
   receivedInvitations OrganizationInvitation[] @relation("InvitationInvitee")
+  notifications       Notification[]
+  notificationPreference NotificationPreference?
 
   @@map("users")
 }
@@ -265,4 +267,45 @@ model OrganizationInvitation {
   @@index([inviteeEmail])
   @@index([status])
   @@map("organization_invitations")
+}
+
+enum NotificationType {
+  SYSTEM
+  ORGANIZATION
+  BILLING
+  SECURITY
+  TEAM
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  data        Json             @default("{}")
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, readAt])
+  @@index([type])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  emailEnabled    Boolean  @default(true)
+  pushEnabled     Boolean  @default(true)
+  inAppEnabled    Boolean  @default(true)
+  mutedTypes      String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
 }

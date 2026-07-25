@@ -16,6 +16,7 @@ import apiKeyRouter from './modules/apikey/apikey.router.js'
 import sessionRouter from './modules/session/session.router.js'
 import auditRouter from './modules/audit/audit.router.js'
 import invitationRouter from './modules/org/invitation.router.js'
+import notificationRouter from './modules/notification/notification.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
 import { initSentry } from './config/sentry.js'
@@ -139,6 +140,9 @@ app.use('/api/audit', auditRouter)
 
 app.use('/api/invitations', authLimiter)
 app.use('/api/invitations', invitationRouter)
+
+app.use('/api/notifications', authLimiter)
+app.use('/api/notifications', notificationRouter)
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
 
