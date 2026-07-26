@@ -254,6 +254,60 @@ async function main() {
 
   console.log(`  ✓ Pending invitation: newmember@demo.com → ${org.name}`)
 
+  // ── Feature Flags ──────────────────────────────────────────────────
+  await prisma.featureFlag.upsert({
+    where: { key: 'beta_dashboard' },
+    update: {},
+    create: {
+      key: 'beta_dashboard',
+      name: 'Beta Dashboard',
+      description: 'Enable the new beta dashboard UI',
+      type: 'BOOLEAN',
+      value: { enabled: false },
+      active: true,
+    },
+  })
+
+  await prisma.featureFlag.upsert({
+    where: { key: 'advanced_analytics' },
+    update: {},
+    create: {
+      key: 'advanced_analytics',
+      name: 'Advanced Analytics',
+      description: 'Plan-gated analytics feature (Pro and Enterprise only)',
+      type: 'PLAN',
+      value: { plans: ['Pro', 'Enterprise'] },
+      active: true,
+    },
+  })
+
+  await prisma.featureFlag.upsert({
+    where: { key: 'new_onboarding_flow' },
+    update: {},
+    create: {
+      key: 'new_onboarding_flow',
+      name: 'New Onboarding Flow',
+      description: 'Gradual rollout of the new onboarding experience',
+      type: 'PERCENTAGE',
+      value: { percentage: 50 },
+      active: true,
+    },
+  })
+
+  // Enable beta_dashboard for the demo org via override
+  await prisma.organizationFeatureFlag.upsert({
+    where: { featureFlagId_organizationId: { featureFlagId: (await prisma.featureFlag.findUnique({ where: { key: 'beta_dashboard' } })).id, organizationId: org.id } },
+    update: {},
+    create: {
+      featureFlagId: (await prisma.featureFlag.findUnique({ where: { key: 'beta_dashboard' } })).id,
+      organizationId: org.id,
+      enabled: true,
+      value: { enabled: true },
+    },
+  })
+
+  console.log(`  ✓ Feature flags: beta_dashboard, advanced_analytics, new_onboarding_flow (50% rollout)`)
+
   console.log('\n✅ Seed complete!\n')
   console.log('  Demo credentials (password for all): Password123')
   console.log('  ┌──────────────────────────────────────────────────────────┐')
