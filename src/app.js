@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/node'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
+import compression from 'compression'
 import rateLimit from 'express-rate-limit'
 import pinoHttp from 'pino-http'
 import logger from './utils/logger.js'
@@ -41,6 +42,7 @@ if (process.env.TRUST_PROXY) {
 }
 
 app.use(helmet()) // Secure HTTP headers
+app.use(compression({ threshold: 0 })) // Gzip compression for all responses
 
 // CORS — never default to wildcard in production
 const corsOrigin = process.env.CORS_ORIGIN ?? '*'
