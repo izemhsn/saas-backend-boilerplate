@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit'
 import pinoHttp from 'pino-http'
 import logger from './utils/logger.js'
 import { errorHandler } from './middleware/error.middleware.js'
+import { sanitizeRequest } from './middleware/sanitize.middleware.js'
 import authRouter from './modules/auth/auth.router.js'
 import orgRouter from './modules/org/org.router.js'
 import adminRouter from './modules/admin/admin.router.js'
@@ -54,6 +55,10 @@ app.use(cors(corsOptions))
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhook)
 
 app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit prevents oversized payload DoS)
+
+// Sanitize input — strips HTML tags, javascript: URIs, on* event handlers,
+// $ operator keys, and prototype pollution keys from body/query/params
+app.use(sanitizeRequest)
 
 // Request ID — attach a unique ID to every request for log tracing
 app.use((req, res, next) => {
