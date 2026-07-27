@@ -108,20 +108,22 @@ export const updateUser = async (userId, data, actingAdminId) => {
 }
 
 export const deleteUser = async (userId, actingAdminId) => {
-  if (userId === actingAdminId)
-    throw httpError('You cannot delete your own account', 400)
-
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
     select: { id: true, role: true },
   })
   if (!user) throw httpError('User not found', 404)
 
-  // Prevent deleting the last admin
+  // Prevent deleting the last admin — checked before the self-delete guard because
+  // the only way to target the last admin via the API is a self-delete (any other
+  // acting admin would mean at least two admins exist)
   if (user.role === 'ADMIN') {
     const adminCount = await prisma.user.count({ where: { role: 'ADMIN', deletedAt: null } })
     if (adminCount <= 1) throw httpError('Cannot delete the last admin', 400)
   }
+
+  if (userId === actingAdminId)
+    throw httpError('You cannot delete your own account', 400)
 
   await prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() } })
   return { message: 'User deleted successfully' }

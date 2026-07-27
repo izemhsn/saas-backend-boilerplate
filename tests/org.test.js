@@ -288,6 +288,7 @@ describe('DELETE /api/organizations/:orgId', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Delete Me', slug: `delete-me-${RUN_ID}` })
     const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
 
     const res = await request(app)
       .delete(`/api/organizations/${orgId}`)
@@ -295,9 +296,10 @@ describe('DELETE /api/organizations/:orgId', () => {
 
     expect(res.status).toBe(200)
 
-    // Verify it's gone
+    // Soft delete — the row remains with deletedAt set
     const org = await prisma.organization.findUnique({ where: { id: orgId } })
-    expect(org).toBeNull()
+    expect(org).not.toBeNull()
+    expect(org.deletedAt).not.toBeNull()
   })
 
   it('rejects delete from non-OWNER', async () => {

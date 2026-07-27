@@ -29,11 +29,6 @@ const app = express()
 // Initialize Sentry — must happen before any middleware
 initSentry()
 
-// Sentry request handler — must be the first middleware on the app
-if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
-  app.use(Sentry.setupExpressErrorHandler(app))
-}
-
 // Trust the reverse proxy (load balancer / ingress) so req.ip and rate limiting
 // use the real client IP from X-Forwarded-For. Configure hop count via TRUST_PROXY.
 if (process.env.TRUST_PROXY) {

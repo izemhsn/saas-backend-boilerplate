@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest'
+import { describe, it, expect, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import app from '../src/app.js'
 import { prisma } from '../src/config/db.js'
@@ -191,32 +191,23 @@ describe('DELETE /api/auth/account', () => {
     const userId = res.body.data.user.id
     createdUserIds.push(userId)
 
-    // Make this user an admin and temporarily remove other admins
+    // Make this user an admin
     await prisma.user.update({ where: { id: userId }, data: { role: 'ADMIN' } })
 
-    // Soft-delete all other admins to simulate being the last one
-    const otherAdmins = await prisma.user.findMany({
-      where: { role: 'ADMIN', id: { not: userId }, deletedAt: null },
-      select: { id: true },
-    })
-    await prisma.user.updateMany({
-      where: { id: { in: otherAdmins.map((a) => a.id) } },
-      data: { deletedAt: new Date() },
-    })
+    // A shared test DB always contains other admins (seed + parallel tests), so the
+    // single-admin state can't be constructed for real — stub the count for this request.
+    // (Mutating other admins' rows here would break parallel test files.)
+    const countSpy = vi.spyOn(prisma.user, 'count').mockResolvedValueOnce(1)
 
     const delRes = await request(app)
       .delete('/api/auth/account')
       .set('Authorization', `Bearer ${res.body.data.token}`)
       .send({ password: VALID_PASSWORD })
 
+    countSpy.mockRestore()
+
     expect(delRes.status).toBe(400)
     expect(delRes.body.message).toMatch(/last admin/i)
-
-    // Restore other admins
-    await prisma.user.updateMany({
-      where: { id: { in: otherAdmins.map((a) => a.id) } },
-      data: { deletedAt: null },
-    })
   })
 
   it('cascades deletion to related data', async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest'
+import { describe, it, expect, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import app from '../src/app.js'
 import { prisma } from '../src/config/db.js'
@@ -296,8 +296,10 @@ describe('DELETE /api/admin/users/:userId', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.message).toMatch(/deleted/i)
 
+    // Soft delete — the row remains with deletedAt set
     const user = await prisma.user.findUnique({ where: { id: targetId } })
-    expect(user).toBeNull()
+    expect(user).not.toBeNull()
+    expect(user.deletedAt).not.toBeNull()
   })
 
   it('returns 404 for non-existent user', async () => {
@@ -390,29 +392,18 @@ describe('Admin self-action guards (F2)', () => {
       data: { role: 'ADMIN' },
     })
 
-    // Make target the only admin
-    await prisma.user.update({
-      where: { id: admin.userId },
-      data: { role: 'USER' },
-    })
-
-    // Re-login as the target admin
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: registerRes.body.data.user.email, password: VALID_PASSWORD })
+    // A shared test DB always contains other admins (seed + earlier tests), so the
+    // single-admin state can't be constructed for real — stub the count for this request
+    const countSpy = vi.spyOn(prisma.user, 'count').mockResolvedValueOnce(1)
 
     const res = await request(app)
       .delete(`/api/admin/users/${targetId}`)
-      .set('Authorization', `Bearer ${loginRes.body.data.token}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+
+    countSpy.mockRestore()
 
     expect(res.status).toBe(400)
     expect(res.body.message).toMatch(/cannot delete the last admin/i)
-
-    // Restore for cleanup
-    await prisma.user.update({
-      where: { id: admin.userId },
-      data: { role: 'ADMIN' },
-    })
   })
 })
 
