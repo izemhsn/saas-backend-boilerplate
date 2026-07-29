@@ -23,6 +23,8 @@ import featureFlagRouter from './modules/featureflag/featureflag.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
 import { initSentry } from './config/sentry.js'
+import { RedisStore } from 'rate-limit-redis'
+import { getRedisConnection } from './config/redis.js'
 
 const app = express()
 
@@ -94,12 +96,23 @@ app.get('/health', async (req, res) => {
 // Rate limiting is disabled under test so the Supertest suite isn't throttled
 const skipInTest = () => process.env.NODE_ENV === 'test'
 
+// Use a Redis-backed store so rate limits are shared across instances when scaling
+// horizontally. In test mode the default in-memory store is used (rate limiting is
+// skipped anyway via `skipInTest`).
+const redisStore =
+  process.env.NODE_ENV !== 'test'
+    ? new RedisStore({
+        sendCommand: (...args) => getRedisConnection().call(...args),
+      })
+    : undefined
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 100,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
+  store: redisStore,
 })
 
 const sensitiveLimiter = rateLimit({
@@ -108,6 +121,7 @@ const sensitiveLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
+  store: redisStore,
 })
 
 app.use('/api/auth', authLimiter)
