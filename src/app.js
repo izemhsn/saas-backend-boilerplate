@@ -83,16 +83,6 @@ app.use(
   }),
 )
 
-// Health check — for uptime monitoring & load balancers (includes DB ping)
-app.get('/health', async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`
-    res.json({ status: 'ok', timestamp: new Date().toISOString() })
-  } catch {
-    res.status(503).json({ status: 'error', message: 'Database unavailable' })
-  }
-})
-
 // Rate limiting is disabled under test so the Supertest suite isn't throttled
 const skipInTest = () => process.env.NODE_ENV === 'test'
 
@@ -122,6 +112,30 @@ const sensitiveLimiter = rateLimit({
   legacyHeaders: false,
   skip: skipInTest,
   store: redisStore,
+})
+
+// Health checks — liveness (no DB, cheap) and readiness (DB ping).
+// Rate-limited to prevent abuse; load balancers should hit these at reasonable intervals.
+const healthLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skip: skipInTest,
+  store: redisStore,
+})
+
+app.get('/health', healthLimiter, (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+app.get('/health/ready', healthLimiter, async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  } catch {
+    res.status(503).json({ status: 'error', message: 'Database unavailable' })
+  }
 })
 
 app.use('/api/auth', authLimiter)
