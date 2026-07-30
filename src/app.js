@@ -59,9 +59,14 @@ app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit pre
 // $ operator keys, and prototype pollution keys from body/query/params
 app.use(sanitizeRequest)
 
-// Request ID — attach a unique ID to every request for log tracing
+// Request ID — attach a unique ID to every request for log tracing.
+// If the client sends a valid X-Request-Id (string, ≤128 chars, alphanumeric
+// + hyphens/underscores), use it; otherwise generate a fresh UUID. This
+// prevents log injection via arrays or arbitrarily long strings.
+const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
 app.use((req, res, next) => {
-  req.id = req.headers['x-request-id'] ?? randomUUID()
+  const clientId = req.headers['x-request-id']
+  req.id = typeof clientId === 'string' && REQUEST_ID_RE.test(clientId) ? clientId : randomUUID()
   res.setHeader('X-Request-Id', req.id)
   next()
 })
