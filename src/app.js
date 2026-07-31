@@ -22,14 +22,10 @@ import notificationRouter from './modules/notification/notification.router.js'
 import featureFlagRouter from './modules/featureflag/featureflag.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
-import { initSentry } from './config/sentry.js'
 import { RedisStore } from 'rate-limit-redis'
 import { getRedisConnection } from './config/redis.js'
 
 const app = express()
-
-// Initialize Sentry — must happen before any middleware
-initSentry()
 
 // Trust the reverse proxy (load balancer / ingress) so req.ip and rate limiting
 // use the real client IP from X-Forwarded-For. Configure hop count via TRUST_PROXY.

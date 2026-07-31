@@ -1,3 +1,4 @@
+import './instrument.js'
 import app from './app.js'
 import { prisma } from './config/db.js'
 import logger from './utils/logger.js'

@@ -1,29 +1,12 @@
 import * as Sentry from '@sentry/node'
-import logger from '../utils/logger.js'
 
-let initialized = false
-
-export const initSentry = () => {
-  if (process.env.NODE_ENV === 'test') return false
-  if (!process.env.SENTRY_DSN) {
-    logger.info('SENTRY_DSN not set — Sentry disabled')
-    return false
-  }
-
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV ?? 'development',
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
-    profilesSampleRate: Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1),
-  })
-
-  initialized = true
-  logger.info('Sentry initialized')
-  return true
-}
+// Sentry is initialized in src/instrument.js, which is loaded via
+// `node --import` before the app starts. This module just re-exports
+// the Sentry instance and provides a helper for error handlers.
 
 export const getSentry = () => {
-  if (!initialized) return null
+  if (process.env.NODE_ENV === 'test') return null
+  if (!process.env.SENTRY_DSN) return null
   return Sentry
 }
 

@@ -1,3 +1,4 @@
+import './instrument.js'
 import 'dotenv/config'
 import { startEmailWorker } from './modules/jobs/email.worker.js'
 import { startMaintenanceWorker } from './modules/jobs/maintenance.worker.js'
