@@ -6,6 +6,7 @@ import { signToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt
 import { httpError } from '../../utils/httpError.js'
 import { queueVerificationEmail, queuePasswordResetEmail } from '../jobs/email.producer.js'
 import { getGoogleClient, isGoogleConfigured, getGoogleAuthUrl as buildGoogleAuthUrl } from '../../config/google.js'
+import { createChallenge } from './twofa.service.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -103,6 +104,7 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
       lockedUntil: true,
       banned: true,
       suspendedUntil: true,
+      twoFactorEnabled: true,
     },
   })
 
@@ -157,6 +159,13 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
 
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
     throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+  }
+
+  // If 2FA is enabled, return a challenge token instead of issuing JWTs.
+  // The client must POST /api/auth/2fa/verify with the challenge + TOTP/backup code.
+  if (user.twoFactorEnabled) {
+    const challengeToken = await createChallenge(user.id)
+    return { twoFactorRequired: true, challengeToken }
   }
 
   const refreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })

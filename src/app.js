@@ -150,6 +150,7 @@ app.post('/api/auth/resend-verification', sensitiveLimiter)
 app.post('/api/auth/change-password', sensitiveLimiter)
 app.post('/api/auth/change-email', sensitiveLimiter)
 app.post('/api/auth/google', sensitiveLimiter)
+app.post('/api/auth/2fa/verify', sensitiveLimiter)
 app.use('/api/auth', authRouter)
 
 app.use('/api/organizations', authLimiter)

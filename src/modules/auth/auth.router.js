@@ -14,6 +14,11 @@ import {
   logoutSchema,
   googleLoginSchema,
 } from './auth.schema.js'
+import {
+  enableTwoFactorSchema,
+  disableTwoFactorSchema,
+  verifyTwoFactorSchema,
+} from './twofa.schema.js'
 import * as ctrl from './auth.controller.js'
 import { deleteAccountSchema } from '../gdpr/gdpr.schema.js'
 import * as gdprCtrl from '../gdpr/gdpr.controller.js'
@@ -32,6 +37,12 @@ router.post('/reset-password', validate(resetPasswordSchema), ctrl.resetPassword
 // Google OAuth routes
 router.get('/google', ctrl.googleAuthUrl)
 router.post('/google', validate(googleLoginSchema), ctrl.googleLogin)
+
+// Two-factor auth routes
+router.post('/2fa/verify', validate(verifyTwoFactorSchema), ctrl.verifyTwoFactor)
+router.post('/2fa/setup', authenticate, ctrl.setupTwoFactor)
+router.post('/2fa/enable', authenticate, validate(enableTwoFactorSchema), ctrl.enableTwoFactor)
+router.post('/2fa/disable', authenticate, validate(disableTwoFactorSchema), ctrl.disableTwoFactor)
 
 // Protected route — JWT required
 router.post('/change-password', authenticate, validate(changePasswordSchema), ctrl.changePassword)
