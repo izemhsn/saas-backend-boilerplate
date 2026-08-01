@@ -1,4 +1,5 @@
 import * as authService from './auth.service.js'
+import * as twofaService from './twofa.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
 
 export const register = async (req, res, next) => {
@@ -24,11 +25,13 @@ export const login = async (req, res, next) => {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     })
-    auditLog('USER_LOGIN', {
-      userId: data.user.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    })
+    if (!data.twoFactorRequired) {
+      auditLog('USER_LOGIN', {
+        userId: data.user.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
+    }
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -154,6 +157,61 @@ export const googleLogin = async (req, res, next) => {
     auditLog('USER_OAUTH_LOGIN', {
       userId: data.user.id,
       metadata: { provider: 'google' },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const setupTwoFactor = async (req, res, next) => {
+  try {
+    const data = await twofaService.setup(req.user.id)
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const enableTwoFactor = async (req, res, next) => {
+  try {
+    const data = await twofaService.enable(req.user.id, req.validated.body)
+    auditLog('TWO_FACTOR_ENABLED', {
+      userId: req.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const disableTwoFactor = async (req, res, next) => {
+  try {
+    const data = await twofaService.disable(req.user.id, req.validated.body)
+    auditLog('TWO_FACTOR_DISABLED', {
+      userId: req.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+    res.json({ success: true, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const verifyTwoFactor = async (req, res, next) => {
+  try {
+    const data = await twofaService.verifyChallenge(req.validated.body, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    })
+    auditLog('USER_LOGIN', {
+      userId: data.user.id,
+      metadata: { twoFactor: true, backupCode: data.backupCodeUsed ?? false },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })

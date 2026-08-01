@@ -32,6 +32,9 @@ model User {
   bannedAt               DateTime?
   suspendedUntil         DateTime?
   deletedAt              DateTime?
+  twoFactorEnabled       Boolean  @default(false)
+  twoFactorSecret        String?
+  twoFactorBackupCodes   String[]
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -47,7 +50,23 @@ model User {
   notifications       Notification[]
   notificationPreference NotificationPreference?
 
+  twoFactorChallenges TwoFactorChallenge[]
+
   @@map("users")
+}
+
+model TwoFactorChallenge {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("two_factor_challenges")
 }
 
 model RefreshToken {
@@ -226,6 +245,8 @@ enum AuditAction {
   FEATURE_FLAG_OVERRIDE_REMOVED
   USER_DATA_EXPORTED
   USER_DATA_DELETED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
 }
 
 model AuditLog {
