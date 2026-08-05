@@ -124,6 +124,25 @@ GET /health
 
 Returns `{ status: "ok", timestamp: "..." }`. Use this for uptime monitoring and load balancer health checks.
 
+## API documentation
+
+The API is documented with an OpenAPI 3.0.3 spec auto-generated from the Zod validation schemas used by every route — the spec is always in sync with the actual request validation.
+
+| Endpoint        | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| `GET /api/docs` | OpenAPI 3.0.3 spec as JSON (machine-consumable)              |
+| `GET /api/docs/ui` | Interactive Swagger UI (human-consumable, try-it-out)      |
+
+The spec covers all 70+ operations across the 12 modules (Auth, Organizations, Admin, Billing, API Keys, Sessions, Audit, Invitations, Notifications, Feature Flags, GDPR, Health) with:
+
+- Path & query parameters derived from each route's Zod `params`/`query` schema
+- Request bodies derived from each route's Zod `body` schema
+- Response schemas wrapped in the standard `{ success, data }` envelope
+- Security schemes for JWT bearer auth (`Authorization: Bearer <token>`) and API key auth (`X-API-Key`)
+- Shared error response schema for 4xx/5xx status codes
+
+The server URL in the spec is taken from `APP_URL`. The Swagger UI is disabled in test mode.
+
 ## Production deployment
 
 ### Environment variables

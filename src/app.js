@@ -20,6 +20,7 @@ import auditRouter from './modules/audit/audit.router.js'
 import invitationRouter from './modules/org/invitation.router.js'
 import notificationRouter from './modules/notification/notification.router.js'
 import featureFlagRouter from './modules/featureflag/featureflag.router.js'
+import docsRouter from './modules/docs/docs.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
 import { RedisStore } from 'rate-limit-redis'
@@ -179,6 +180,10 @@ app.use('/api/notifications', notificationRouter)
 
 app.use('/api/feature-flags', authLimiter)
 app.use('/api/feature-flags', featureFlagRouter)
+
+// API documentation — OpenAPI 3.0 spec + Swagger UI (not rate-limited so
+// external tools can fetch the spec without being throttled).
+app.use('/api/docs', docsRouter)
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
 
