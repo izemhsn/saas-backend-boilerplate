@@ -46,20 +46,12 @@ if (corsOrigin !== '*') {
 }
 app.use(cors(corsOptions))
 
-// Stripe webhook — needs the raw body for signature verification, so it MUST be
-// registered before express.json() (otherwise the JSON parser consumes the body first)
-app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhook)
-
-app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit prevents oversized payload DoS)
-
-// Sanitize input — strips HTML tags, javascript: URIs, on* event handlers,
-// $ operator keys, and prototype pollution keys from body/query/params
-app.use(sanitizeRequest)
-
 // Request ID — attach a unique ID to every request for log tracing.
 // If the client sends a valid X-Request-Id (string, ≤128 chars, alphanumeric
 // + hyphens/underscores), use it; otherwise generate a fresh UUID. This
 // prevents log injection via arrays or arbitrarily long strings.
+// Registered BEFORE the Stripe webhook route so webhook requests are traced
+// too (this middleware doesn't touch the body).
 const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
 app.use((req, res, next) => {
   const clientId = req.headers['x-request-id']
@@ -68,7 +60,9 @@ app.use((req, res, next) => {
   next()
 })
 
-// Structured request logging via pino-http — JSON in production, pretty in dev, silent in test
+// Structured request logging via pino-http — JSON in production, pretty in dev, silent in test.
+// Also registered BEFORE the webhook route (logging doesn't consume the body),
+// so webhook requests appear in the access log with their request ID.
 app.use(
   pinoHttp({
     logger,
@@ -85,13 +79,24 @@ app.use(
   }),
 )
 
+// Stripe webhook — needs the raw body for signature verification, so it MUST be
+// registered before express.json() (otherwise the JSON parser consumes the body first)
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhook)
+
+app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit prevents oversized payload DoS)
+
+// Sanitize input — strips HTML tags, javascript: URIs, on* event handlers,
+// $ operator keys, and prototype pollution keys from body/query/params
+app.use(sanitizeRequest)
+
 // Rate limiting is disabled under test so the Supertest suite isn't throttled
 const skipInTest = () => process.env.NODE_ENV === 'test'
 
-// Use a Redis-backed store so rate limits are shared across instances when scaling
-// horizontally. In test mode the default in-memory store is used (rate limiting is
-// skipped anyway via `skipInTest`).
-const redisStore =
+// Each rate limiter needs its own RedisStore instance — express-rate-limit v7
+// rejects a shared store (ERR_ERL_STORE_REUSE). All stores reuse the same
+// ioredis connection but use distinct key prefixes so counters are isolated.
+// In test mode no store is created (rate limiting is skipped via `skipInTest`).
+const createRedisStore = () =>
   process.env.NODE_ENV !== 'test'
     ? new RedisStore({
         sendCommand: (...args) => getRedisConnection().call(...args),
@@ -104,7 +109,7 @@ const authLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: redisStore,
+  store: createRedisStore(),
 })
 
 const sensitiveLimiter = rateLimit({
@@ -113,7 +118,7 @@ const sensitiveLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: redisStore,
+  store: createRedisStore(),
 })
 
 // Health checks — liveness (no DB, cheap) and readiness (DB ping).
@@ -124,7 +129,7 @@ const healthLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: redisStore,
+  store: createRedisStore(),
 })
 
 app.get('/health', healthLimiter, (req, res) => {

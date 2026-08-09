@@ -38,9 +38,7 @@ describe('GET /api/sessions', () => {
       .post('/api/auth/refresh')
       .send({ refreshToken: registerRes.body.data.refreshToken })
 
-    const res = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
@@ -57,9 +55,7 @@ describe('GET /api/sessions', () => {
     const { res: res2 } = await registerUser('isolation2')
     const token2 = res2.body.data.token
 
-    const res = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token2}`)
+    const res = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token2}`)
 
     expect(res.status).toBe(200)
     // Cross-revoke test below verifies isolation — here we just verify the list works
@@ -79,9 +75,7 @@ describe('POST /api/sessions/:sessionId/revoke', () => {
     const { token } = registerRes.body.data
 
     // Get sessions
-    const listRes = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token}`)
+    const listRes = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
 
     const sessionId = listRes.body.data.sessions[0].id
 
@@ -108,9 +102,7 @@ describe('POST /api/sessions/:sessionId/revoke', () => {
     const { res: registerRes } = await registerUser('revoke-twice')
     const { token } = registerRes.body.data
 
-    const listRes = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token}`)
+    const listRes = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
 
     const sessionId = listRes.body.data.sessions[0].id
 
@@ -134,9 +126,7 @@ describe('POST /api/sessions/:sessionId/revoke', () => {
     const token2 = res2.body.data.token
 
     // Get user2's sessions
-    const listRes = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token2}`)
+    const listRes = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token2}`)
 
     const sessionId = listRes.body.data.sessions[0].id
 
@@ -167,9 +157,7 @@ describe('POST /api/sessions/revoke-all', () => {
     expect(res.body.data.revokedCount).toBeGreaterThanOrEqual(1)
 
     // Verify all sessions are revoked
-    const listRes = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token}`)
+    const listRes = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
 
     for (const session of listRes.body.data.sessions) {
       expect(session.revoked).toBe(true)
@@ -181,9 +169,7 @@ describe('POST /api/sessions/revoke-all', () => {
     const { token } = registerRes.body.data
 
     // Revoke all first
-    await request(app)
-      .post('/api/sessions/revoke-all')
-      .set('Authorization', `Bearer ${token}`)
+    await request(app).post('/api/sessions/revoke-all').set('Authorization', `Bearer ${token}`)
 
     // Revoke all again
     const res = await request(app)

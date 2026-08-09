@@ -97,9 +97,7 @@ describe('GET /api/api-keys', () => {
       .send({ name: 'Listable Key', scopes: ['read:projects'] })
     createdKeyIds.push(createRes.body.data.apiKey.id)
 
-    const res = await request(app)
-      .get('/api/api-keys')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/api-keys').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.data.apiKeys.length).toBeGreaterThanOrEqual(1)
@@ -120,12 +118,12 @@ describe('GET /api/api-keys', () => {
       .send({ name: 'Owner1 Key' })
     createdKeyIds.push(createRes.body.data.apiKey.id)
 
-    const res = await request(app)
-      .get('/api/api-keys')
-      .set('Authorization', `Bearer ${token2}`)
+    const res = await request(app).get('/api/api-keys').set('Authorization', `Bearer ${token2}`)
 
     expect(res.status).toBe(200)
-    expect(res.body.data.apiKeys.find((k) => k.id === createRes.body.data.apiKey.id)).toBeUndefined()
+    expect(
+      res.body.data.apiKeys.find((k) => k.id === createRes.body.data.apiKey.id),
+    ).toBeUndefined()
   })
 })
 
@@ -193,9 +191,7 @@ describe('POST /api/api-keys/:keyId/revoke', () => {
     const keyId = createRes.body.data.apiKey.id
     createdKeyIds.push(keyId)
 
-    await request(app)
-      .post(`/api/api-keys/${keyId}/revoke`)
-      .set('Authorization', `Bearer ${token}`)
+    await request(app).post(`/api/api-keys/${keyId}/revoke`).set('Authorization', `Bearer ${token}`)
 
     const res = await request(app)
       .post(`/api/api-keys/${keyId}/revoke`)

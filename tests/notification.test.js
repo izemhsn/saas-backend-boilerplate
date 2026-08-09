@@ -12,11 +12,13 @@ const createdUserIds = []
 
 async function registerUser(label) {
   const email = emailFor(label)
-  const res = await request(app).post('/api/auth/register').send({
-    name: `Test ${label}`,
-    email,
-    password: VALID_PASSWORD,
-  })
+  const res = await request(app)
+    .post('/api/auth/register')
+    .send({
+      name: `Test ${label}`,
+      email,
+      password: VALID_PASSWORD,
+    })
   createdUserIds.push(res.body.data.user.id)
   return { email, userId: res.body.data.user.id, token: res.body.data.token }
 }
@@ -35,9 +37,7 @@ describe('GET /api/notifications', () => {
   it('returns empty list for new user', async () => {
     const { token } = await registerUser('list-empty')
 
-    const res = await request(app)
-      .get('/api/notifications')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/notifications').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
@@ -59,9 +59,7 @@ describe('GET /api/notifications', () => {
       message: 'A new member joined your org',
     })
 
-    const res = await request(app)
-      .get('/api/notifications')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/notifications').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.data.notifications).toHaveLength(2)
@@ -179,9 +177,17 @@ describe('PATCH /api/notifications/read-all', () => {
   it('marks all notifications as read', async () => {
     const { token, userId } = await registerUser('mark-all')
 
-    await notificationService.createNotification(userId, { type: 'SYSTEM', title: 'A', message: 'A' })
+    await notificationService.createNotification(userId, {
+      type: 'SYSTEM',
+      title: 'A',
+      message: 'A',
+    })
     await notificationService.createNotification(userId, { type: 'TEAM', title: 'B', message: 'B' })
-    await notificationService.createNotification(userId, { type: 'SECURITY', title: 'C', message: 'C' })
+    await notificationService.createNotification(userId, {
+      type: 'SECURITY',
+      title: 'C',
+      message: 'C',
+    })
 
     const res = await request(app)
       .patch('/api/notifications/read-all')

@@ -128,10 +128,10 @@ Returns `{ status: "ok", timestamp: "..." }`. Use this for uptime monitoring and
 
 The API is documented with an OpenAPI 3.0.3 spec auto-generated from the Zod validation schemas used by every route — the spec is always in sync with the actual request validation.
 
-| Endpoint        | Description                                                  |
-| --------------- | ------------------------------------------------------------ |
-| `GET /api/docs` | OpenAPI 3.0.3 spec as JSON (machine-consumable)              |
-| `GET /api/docs/ui` | Interactive Swagger UI (human-consumable, try-it-out)      |
+| Endpoint           | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `GET /api/docs`    | OpenAPI 3.0.3 spec as JSON (machine-consumable)       |
+| `GET /api/docs/ui` | Interactive Swagger UI (human-consumable, try-it-out) |
 
 The spec covers all 70+ operations across the 12 modules (Auth, Organizations, Admin, Billing, API Keys, Sessions, Audit, Invitations, Notifications, Feature Flags, GDPR, Health) with:
 
@@ -198,3 +198,36 @@ docker run -p 3000:3000 --env-file .env saas-backend
 ```
 
 > Run `npm run db:deploy` (`prisma migrate deploy`), not `db:migrate`, in production — it applies committed migrations without generating new ones or prompting.
+
+## CI/CD
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+### CI (`ci.yml`)
+
+Runs on every push to `main`/`dev` and on pull requests. Three jobs:
+
+| Job     | What it does                                                             |
+| ------- | ------------------------------------------------------------------------ |
+| `lint`  | ESLint + Prettier format check                                           |
+| `test`  | Vitest suite with coverage against PostgreSQL + Redis service containers |
+| `build` | Docker production image build + smoke test (`/health` responds)          |
+
+`lint` and `test` run in parallel; `build` waits for both to pass. Coverage reports are uploaded as artifacts.
+
+### Deploy (`deploy.yml`)
+
+Runs on push to `main` or version tags (`v*`). Builds the production Docker image and pushes it to **GitHub Container Registry** (GHCR):
+
+```
+ghcr.io/<owner>/<repo>:latest        # latest on main
+ghcr.io/<owner>/<repo>:sha-<sha>     # immutable per-commit
+ghcr.io/<owner>/<repo>:1.2.3         # semver tag
+ghcr.io/<owner>/<repo>:1.2           # major.minor
+```
+
+The `deploy` job is a placeholder — uncomment and adapt it for your hosting platform (Fly.io, Railway, Render, Kubernetes, VPS, etc.). See the comments in `deploy.yml` for examples.
+
+### Required secrets
+
+The workflows use the built-in `GITHUB_TOKEN` (no extra secrets needed for GHCR). For the deploy step, add platform-specific secrets (e.g. `FLY_API_TOKEN`, `KUBE_CONFIG`) via **Settings → Secrets and variables → Actions**.

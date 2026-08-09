@@ -15,7 +15,10 @@ const auditSelect = {
 }
 
 // Fire-and-forget audit log — never blocks the request, never throws
-export const log = (action, { userId, targetUserId, organizationId, ipAddress, userAgent, metadata = {} } = {}) => {
+export const log = (
+  action,
+  { userId, targetUserId, organizationId, ipAddress, userAgent, metadata = {} } = {},
+) => {
   prisma.auditLog
     .create({
       data: {

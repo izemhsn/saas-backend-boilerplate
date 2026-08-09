@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest'
+import { describe, it, expect, afterAll, beforeAll } from 'vitest'
 import request from 'supertest'
 import express from 'express'
 import app from '../src/app.js'
@@ -17,6 +17,15 @@ const createdUserIds = []
 const createdKeyIds = []
 const createdSubscriptionIds = []
 const createdFlagKeys = []
+const createdPlanIds = []
+
+// Plans are created in beforeAll with unique names so this file is fully
+// self-contained — it must not depend on seed data or on billing.test.js
+// (which runs in a parallel worker and creates/deletes its own plans).
+// A fresh CI database has no plans at all, so relying on findFirst by a
+// shared name ('Pro'/'Free') is a race that fails on clean databases.
+let proPlan
+let freePlan
 
 const registerUser = async (label, overrides = {}) => {
   const email = emailFor(label)
@@ -28,8 +37,37 @@ const registerUser = async (label, overrides = {}) => {
   return { email, res }
 }
 
+beforeAll(async () => {
+  proPlan = await prisma.plan.create({
+    data: {
+      name: `Pro-mw-${RUN_ID}`,
+      description: 'Middleware test Pro plan',
+      stripePriceId: `price_mw_pro_${RUN_ID}`,
+      priceCents: 1999,
+      currency: 'usd',
+      interval: 'MONTH',
+      features: { maxProjects: 50 },
+      active: true,
+    },
+  })
+  freePlan = await prisma.plan.create({
+    data: {
+      name: `Free-mw-${RUN_ID}`,
+      description: 'Middleware test Free plan',
+      stripePriceId: `price_mw_free_${RUN_ID}`,
+      priceCents: 0,
+      currency: 'usd',
+      interval: 'MONTH',
+      features: { maxProjects: 1 },
+      active: true,
+    },
+  })
+  createdPlanIds.push(proPlan.id, freePlan.id)
+})
+
 afterAll(async () => {
   await prisma.subscription.deleteMany({ where: { id: { in: createdSubscriptionIds } } })
+  await prisma.plan.deleteMany({ where: { id: { in: createdPlanIds } } })
   await prisma.apiKey.deleteMany({ where: { id: { in: createdKeyIds } } })
   await prisma.featureFlag.deleteMany({ where: { key: { in: createdFlagKeys } } })
   await prisma.refreshToken.deleteMany({
@@ -44,7 +82,13 @@ const buildApp = (...middleware) => {
   const testApp = express()
   testApp.use(express.json())
   testApp.get('/test', ...middleware, (req, res) => {
-    res.json({ success: true, user: req.user, apiKey: req.apiKey, subscription: req.subscription, featureFlag: req.featureFlag })
+    res.json({
+      success: true,
+      user: req.user,
+      apiKey: req.apiKey,
+      subscription: req.subscription,
+      featureFlag: req.featureFlag,
+    })
   })
   return testApp
 }
@@ -68,7 +112,10 @@ describe('authenticateApiKey middleware', () => {
   it('attaches req.user and req.apiKey on success', async () => {
     const { res: registerRes } = await registerUser('apikey-valid')
     const userId = registerRes.body.data.user.id
-    const { apiKey, key } = await createApiKey(userId, { name: 'Test Key', scopes: ['read', 'write'] })
+    const { apiKey, key } = await createApiKey(userId, {
+      name: 'Test Key',
+      scopes: ['read', 'write'],
+    })
     createdKeyIds.push(apiKey.id)
 
     const testApp = buildApp(authenticateApiKey)
@@ -103,7 +150,10 @@ describe('requireScope middleware', () => {
   it('passes when the scope is present', async () => {
     const { res: registerRes } = await registerUser('apikey-scope-ok')
     const userId = registerRes.body.data.user.id
-    const { apiKey, key } = await createApiKey(userId, { name: 'Write Key', scopes: ['read', 'write'] })
+    const { apiKey, key } = await createApiKey(userId, {
+      name: 'Write Key',
+      scopes: ['read', 'write'],
+    })
     createdKeyIds.push(apiKey.id)
 
     const testApp = buildApp(authenticateApiKey, requireScope('write'))
@@ -137,11 +187,10 @@ describe('requireSubscription middleware', () => {
   it('attaches req.subscription when an active subscription exists', async () => {
     const { res: registerRes } = await registerUser('with-sub')
     const userId = registerRes.body.data.user.id
-    const plan = await prisma.plan.findFirst({ where: { name: 'Pro' } })
     const sub = await prisma.subscription.create({
       data: {
         userId,
-        planId: plan.id,
+        planId: proPlan.id,
         stripeSubscriptionId: `sub_mw_${RUN_ID}`,
         stripeCustomerId: `cus_mw_${RUN_ID}`,
         status: 'ACTIVE',
@@ -158,7 +207,7 @@ describe('requireSubscription middleware', () => {
     const res = await request(testApp).get('/test')
     expect(res.status).toBe(200)
     expect(res.body.subscription.status).toBe('ACTIVE')
-    expect(res.body.subscription.plan.name).toBe('Pro')
+    expect(res.body.subscription.plan.name).toBe(proPlan.name)
   })
 })
 
@@ -173,11 +222,10 @@ describe('requirePlan middleware', () => {
   it('returns 403 when the plan does not match', async () => {
     const { res: registerRes } = await registerUser('wrong-plan')
     const userId = registerRes.body.data.user.id
-    const plan = await prisma.plan.findFirst({ where: { name: 'Free' } })
     const sub = await prisma.subscription.create({
       data: {
         userId,
-        planId: plan.id,
+        planId: freePlan.id,
         stripeSubscriptionId: `sub_mw_free_${RUN_ID}`,
         stripeCustomerId: `cus_mw_free_${RUN_ID}`,
         status: 'ACTIVE',
@@ -193,7 +241,7 @@ describe('requirePlan middleware', () => {
         next()
       },
       requireSubscription,
-      requirePlan('Pro'),
+      requirePlan(proPlan.name),
     )
     const res = await request(testApp).get('/test')
     expect(res.status).toBe(403)
@@ -203,11 +251,10 @@ describe('requirePlan middleware', () => {
   it('passes when the plan matches', async () => {
     const { res: registerRes } = await registerUser('right-plan')
     const userId = registerRes.body.data.user.id
-    const plan = await prisma.plan.findFirst({ where: { name: 'Pro' } })
     const sub = await prisma.subscription.create({
       data: {
         userId,
-        planId: plan.id,
+        planId: proPlan.id,
         stripeSubscriptionId: `sub_mw_pro_${RUN_ID}`,
         stripeCustomerId: `cus_mw_pro_${RUN_ID}`,
         status: 'ACTIVE',
@@ -223,7 +270,7 @@ describe('requirePlan middleware', () => {
         next()
       },
       requireSubscription,
-      requirePlan('Pro'),
+      requirePlan(proPlan.name),
     )
     const res = await request(testApp).get('/test')
     expect(res.status).toBe(200)

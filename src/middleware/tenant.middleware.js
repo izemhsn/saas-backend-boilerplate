@@ -24,7 +24,9 @@ export const requireTenant = async (req, res, next) => {
     })
 
     if (!membership || membership.organization.deletedAt) {
-      return res.status(403).json({ success: false, message: 'You do not have access to this organization' })
+      return res
+        .status(403)
+        .json({ success: false, message: 'You do not have access to this organization' })
     }
 
     req.tenant = {
@@ -62,7 +64,9 @@ export const requireTenantIncludeDeleted = async (req, res, next) => {
     })
 
     if (!membership) {
-      return res.status(403).json({ success: false, message: 'You do not have access to this organization' })
+      return res
+        .status(403)
+        .json({ success: false, message: 'You do not have access to this organization' })
     }
 
     req.tenant = {
@@ -88,7 +92,9 @@ export const requireOrgRole =
       return res.status(400).json({ success: false, message: 'No tenant context' })
     }
     if (!roles.includes(req.tenant.role)) {
-      return res.status(403).json({ success: false, message: 'Insufficient organization permissions' })
+      return res
+        .status(403)
+        .json({ success: false, message: 'Insufficient organization permissions' })
     }
     next()
   }

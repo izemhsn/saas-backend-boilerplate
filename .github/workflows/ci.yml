@@ -1,0 +1,168 @@
+# CI pipeline — runs on every push to main/dev and on pull requests.
+# Jobs run in parallel where possible and gate each other via `needs`:
+#
+#   lint ─┐
+#         ├──► build
+#   test ─┘
+#
+# lint  — ESLint + Prettier format check (fast, no DB needed)
+# test  — Vitest suite against PostgreSQL + Redis service containers
+# build — Docker production image build (confirms the Dockerfile is valid)
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+# Cancel in-flight runs for the same ref when a new commit is pushed — saves
+# runner minutes on rapid pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check Prettier formatting
+        run: npm run format:check
+
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+
+    # PostgreSQL + Redis as service containers — the test job can reach them
+    # on localhost via the default ports. The `pg_isready` health check gates
+    # job start until Postgres is accepting connections.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas-boilerplate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saas-boilerplate_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
+      JWT_REFRESH_SECRET: ci-jwt-refresh-secret-at-least-32-chars
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
+      - name: Run tests with coverage
+        run: npm run test:cov
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: false
+          tags: saas-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+
+      - name: Smoke-test the image
+        run: |
+          # Start a Redis container on a custom network so the app can reach it
+          # by hostname. In production mode the rate limiters use a Redis store,
+          # so Redis must be reachable for /health to respond promptly.
+          docker network create smoke-net
+          docker run -d --name smoke-redis --network smoke-net redis:7-alpine
+
+          # Start the app container with env vars that pass the production boot
+          # validation (32+ char JWT secrets + CORS_ORIGIN). The /health
+          # endpoint doesn't touch the DB, so a dummy DATABASE_URL is fine.
+          # REDIS_URL points at the sibling Redis container.
+          docker run -d --name smoke -p 3001:3000 --network smoke-net \
+            -e DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" \
+            -e REDIS_URL="redis://smoke-redis:6379" \
+            -e JWT_SECRET="ci-smoke-test-jwt-secret-at-least-32-chars" \
+            -e JWT_REFRESH_SECRET="ci-smoke-test-jwt-refresh-secret-32-chars" \
+            -e CORS_ORIGIN="http://localhost:3000" \
+            saas-backend:ci
+
+          # Wait for the server to start (or fail within 15s — allow time for
+          # the Redis connection to establish before the first request).
+          timeout 15 bash -c 'until curl -sf http://localhost:3001/health > /dev/null 2>&1; do sleep 0.5; done' \
+            && echo "Smoke test passed — server responds on /health" \
+            || { echo "Smoke test failed — server did not start"; docker logs smoke; exit 1; }
+
+          docker stop smoke smoke-redis || true
+          docker rm smoke smoke-redis || true
+          docker network rm smoke-net || true

@@ -343,9 +343,7 @@ describe('Two-factor authentication', () => {
 
       const freshCode = await generate({ secret: user.twoFactorSecret })
       // First use — should succeed
-      await request(app)
-        .post('/api/auth/2fa/verify')
-        .send({ challengeToken, code: freshCode })
+      await request(app).post('/api/auth/2fa/verify').send({ challengeToken, code: freshCode })
 
       // Second use — should fail
       const freshCode2 = await generate({ secret: user.twoFactorSecret })
@@ -358,9 +356,7 @@ describe('Two-factor authentication', () => {
     }, 30000)
 
     it('rejects verify with missing challengeToken', async () => {
-      const res = await request(app)
-        .post('/api/auth/2fa/verify')
-        .send({ code: '123456' })
+      const res = await request(app).post('/api/auth/2fa/verify').send({ code: '123456' })
 
       expect(res.status).toBe(400)
     })

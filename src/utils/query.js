@@ -26,7 +26,5 @@ const setNestedValue = (path, value) => {
 
 export const buildSearch = (search, fields) => {
   if (!search) return undefined
-  return fields.map((field) =>
-    setNestedValue(field, { contains: search, mode: 'insensitive' }),
-  )
+  return fields.map((field) => setNestedValue(field, { contains: search, mode: 'insensitive' }))
 }

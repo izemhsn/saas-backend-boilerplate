@@ -35,9 +35,7 @@ export const listUsers = async (query) => {
     where.suspendedUntil = { gt: new Date() }
   } else if (status === 'active') {
     where.banned = false
-    where.AND = [
-      { OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: new Date() } }] },
-    ]
+    where.AND = [{ OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: new Date() } }] }]
   } else if (status === 'deleted') {
     where.deletedAt = { not: null }
   }
@@ -122,8 +120,7 @@ export const deleteUser = async (userId, actingAdminId) => {
     if (adminCount <= 1) throw httpError('Cannot delete the last admin', 400)
   }
 
-  if (userId === actingAdminId)
-    throw httpError('You cannot delete your own account', 400)
+  if (userId === actingAdminId) throw httpError('You cannot delete your own account', 400)
 
   await prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() } })
   return { message: 'User deleted successfully' }

@@ -45,9 +45,7 @@ describe('GET /api/audit (admin)', () => {
     const { res: registerRes } = await registerUser('non-admin')
     const { token } = registerRes.body.data
 
-    const res = await request(app)
-      .get('/api/audit')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/audit').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(403)
   })
@@ -60,9 +58,7 @@ describe('GET /api/audit (admin)', () => {
 
     await flushAuditLogs()
 
-    const res = await request(app)
-      .get('/api/audit')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/audit').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
@@ -123,9 +119,7 @@ describe('GET /api/audit/me (user)', () => {
 
     await flushAuditLogs()
 
-    const res = await request(app)
-      .get('/api/audit/me')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/audit/me').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.data.logs.length).toBeGreaterThanOrEqual(1)

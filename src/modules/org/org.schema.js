@@ -8,7 +8,10 @@ export const createOrgSchema = z.object({
       .string()
       .min(2, 'Slug must be at least 2 characters')
       .max(50)
-      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'Slug must be lowercase alphanumeric with hyphens'),
+      .regex(
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+        'Slug must be lowercase alphanumeric with hyphens',
+      ),
   }),
 })
 
@@ -18,12 +21,19 @@ export const updateOrgSchema = z.object({
   }),
   body: z
     .object({
-      name: z.string().min(2, 'Organization name must be at least 2 characters').max(100).optional(),
+      name: z
+        .string()
+        .min(2, 'Organization name must be at least 2 characters')
+        .max(100)
+        .optional(),
       slug: z
         .string()
         .min(2)
         .max(50)
-        .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'Slug must be lowercase alphanumeric with hyphens')
+        .regex(
+          /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+          'Slug must be lowercase alphanumeric with hyphens',
+        )
         .optional(),
     })
     .refine((data) => data.name !== undefined || data.slug !== undefined, {

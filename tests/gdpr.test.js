@@ -12,11 +12,13 @@ const createdOrgIds = []
 
 async function registerUser(label) {
   const email = emailFor(label)
-  const res = await request(app).post('/api/auth/register').send({
-    name: `Test ${label}`,
-    email,
-    password: VALID_PASSWORD,
-  })
+  const res = await request(app)
+    .post('/api/auth/register')
+    .send({
+      name: `Test ${label}`,
+      email,
+      password: VALID_PASSWORD,
+    })
   createdUserIds.push(res.body.data.user.id)
   return { email, userId: res.body.data.user.id, token: res.body.data.token }
 }
@@ -163,9 +165,7 @@ describe('DELETE /api/auth/account', () => {
   })
 
   it('rejects without auth', async () => {
-    const res = await request(app)
-      .delete('/api/auth/account')
-      .send({ password: VALID_PASSWORD })
+    const res = await request(app).delete('/api/auth/account').send({ password: VALID_PASSWORD })
 
     expect(res.status).toBe(401)
   })

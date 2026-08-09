@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { getEmailQueue, getMaintenanceQueue } from '../src/modules/jobs/queues.js'
-import { queueVerificationEmail, queuePasswordResetEmail } from '../src/modules/jobs/email.producer.js'
+import {
+  queueVerificationEmail,
+  queuePasswordResetEmail,
+} from '../src/modules/jobs/email.producer.js'
 import { scheduleRefreshTokenCleanup } from '../src/modules/jobs/maintenance.producer.js'
-import { sendVerificationEmail, sendPasswordResetEmail } from '../src/modules/shared/email.service.js'
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from '../src/modules/shared/email.service.js'
 
 vi.mock('../src/config/redis.js', () => ({
   getRedisConnection: () => ({

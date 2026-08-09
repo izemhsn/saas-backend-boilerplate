@@ -22,9 +22,13 @@ router.get('/', (req, res) => {
 
 // Swagger UI — skipped in test to avoid loading static assets.
 if (!isTest) {
-  router.use('/ui', swaggerUi.serve, swaggerUi.setup(buildSpec(), {
-    customSiteTitle: 'SaaS Boilerplate API Docs',
-  }))
+  router.use(
+    '/ui',
+    swaggerUi.serve,
+    swaggerUi.setup(buildSpec(), {
+      customSiteTitle: 'SaaS Boilerplate API Docs',
+    }),
+  )
 }
 
 export default router

@@ -21,22 +21,53 @@ export const getUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    const data = await adminService.updateUser(req.validated.params.userId, req.validated.body, req.user.id)
+    const data = await adminService.updateUser(
+      req.validated.params.userId,
+      req.validated.body,
+      req.user.id,
+    )
     const body = req.validated.body
     if (body.banned === true) {
-      auditLog('USER_BANNED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+      auditLog('USER_BANNED', {
+        userId: req.user.id,
+        targetUserId: req.validated.params.userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
     } else if (body.banned === false) {
-      auditLog('USER_UNBANNED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+      auditLog('USER_UNBANNED', {
+        userId: req.user.id,
+        targetUserId: req.validated.params.userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
     }
     if (body.suspendedUntil !== undefined) {
       if (body.suspendedUntil) {
-        auditLog('USER_SUSPENDED', { userId: req.user.id, targetUserId: req.validated.params.userId, metadata: { until: body.suspendedUntil }, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+        auditLog('USER_SUSPENDED', {
+          userId: req.user.id,
+          targetUserId: req.validated.params.userId,
+          metadata: { until: body.suspendedUntil },
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        })
       } else {
-        auditLog('USER_UNSUSPENDED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+        auditLog('USER_UNSUSPENDED', {
+          userId: req.user.id,
+          targetUserId: req.validated.params.userId,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        })
       }
     }
     if (body.role !== undefined) {
-      auditLog('USER_ROLE_CHANGED', { userId: req.user.id, targetUserId: req.validated.params.userId, metadata: { newRole: body.role }, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+      auditLog('USER_ROLE_CHANGED', {
+        userId: req.user.id,
+        targetUserId: req.validated.params.userId,
+        metadata: { newRole: body.role },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
     }
     res.json({ success: true, data })
   } catch (err) {
@@ -47,7 +78,12 @@ export const updateUser = async (req, res, next) => {
 export const deleteUser = async (req, res, next) => {
   try {
     const data = await adminService.deleteUser(req.validated.params.userId, req.user.id)
-    auditLog('USER_DELETED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+    auditLog('USER_DELETED', {
+      userId: req.user.id,
+      targetUserId: req.validated.params.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -57,7 +93,12 @@ export const deleteUser = async (req, res, next) => {
 export const restoreUser = async (req, res, next) => {
   try {
     const data = await adminService.restoreUser(req.validated.params.userId)
-    auditLog('USER_RESTORED', { userId: req.user.id, targetUserId: req.validated.params.userId, ipAddress: req.ip, userAgent: req.headers['user-agent'] })
+    auditLog('USER_RESTORED', {
+      userId: req.user.id,
+      targetUserId: req.validated.params.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data })
   } catch (err) {
     next(err)

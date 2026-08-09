@@ -50,4 +50,32 @@ describe('POST /api/billing/webhook (signature verification)', () => {
     expect(res.status).toBe(400)
     expect(res.body.message).toMatch(/signature verification failed/i)
   })
+
+  // G2 — request-ID middleware runs before the webhook route, so webhook
+  // requests get an X-Request-Id header (and appear in the access log)
+  it('attaches an X-Request-Id header to webhook responses', async () => {
+    const payload = JSON.stringify({ type: 'test.unhandled_event' })
+
+    const res = await request(app)
+      .post('/api/billing/webhook')
+      .set('Stripe-Signature', 't=123,v1=invalid_signature')
+      .set('Content-Type', 'application/json')
+      .send(payload)
+
+    expect(res.headers['x-request-id']).toBeTypeOf('string')
+    expect(res.headers['x-request-id'].length).toBeGreaterThan(0)
+  })
+
+  it('echoes a valid client-supplied X-Request-Id on webhook responses', async () => {
+    const payload = JSON.stringify({ type: 'test.unhandled_event' })
+
+    const res = await request(app)
+      .post('/api/billing/webhook')
+      .set('Stripe-Signature', 't=123,v1=invalid_signature')
+      .set('Content-Type', 'application/json')
+      .set('X-Request-Id', 'stripe-evt-trace-123')
+      .send(payload)
+
+    expect(res.headers['x-request-id']).toBe('stripe-evt-trace-123')
+  })
 })
