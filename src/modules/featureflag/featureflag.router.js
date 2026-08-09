@@ -28,7 +28,17 @@ router.patch('/:flagId', authorize('ADMIN'), validate(updateFlagSchema), ctrl.up
 router.delete('/:flagId', authorize('ADMIN'), validate(flagIdParamSchema), ctrl.deleteFlag)
 
 // Overrides — admin only
-router.post('/:flagId/overrides/:orgId', authorize('ADMIN'), validate(setOverrideSchema), ctrl.setOverride)
-router.delete('/:flagId/overrides/:orgId', authorize('ADMIN'), validate(overrideParamSchema), ctrl.removeOverride)
+router.post(
+  '/:flagId/overrides/:orgId',
+  authorize('ADMIN'),
+  validate(setOverrideSchema),
+  ctrl.setOverride,
+)
+router.delete(
+  '/:flagId/overrides/:orgId',
+  authorize('ADMIN'),
+  validate(overrideParamSchema),
+  ctrl.removeOverride,
+)
 
 export default router

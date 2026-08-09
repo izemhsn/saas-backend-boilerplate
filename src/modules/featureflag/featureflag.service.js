@@ -57,7 +57,19 @@ export const listFlags = async (query = {}) => {
 export const getFlag = async (flagId) => {
   const flag = await prisma.featureFlag.findUnique({
     where: { id: flagId },
-    select: { ...flagSelect, overrides: { select: { id: true, organizationId: true, enabled: true, value: true, createdAt: true, updatedAt: true } } },
+    select: {
+      ...flagSelect,
+      overrides: {
+        select: {
+          id: true,
+          organizationId: true,
+          enabled: true,
+          value: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    },
   })
   if (!flag) throw httpError('Feature flag not found', 404)
   return { flag }
@@ -90,14 +102,25 @@ export const setOverride = async (flagId, orgId, { enabled, value }) => {
   const flag = await prisma.featureFlag.findUnique({ where: { id: flagId }, select: { id: true } })
   if (!flag) throw httpError('Feature flag not found', 404)
 
-  const org = await prisma.organization.findFirst({ where: { id: orgId, deletedAt: null }, select: { id: true } })
+  const org = await prisma.organization.findFirst({
+    where: { id: orgId, deletedAt: null },
+    select: { id: true },
+  })
   if (!org) throw httpError('Organization not found', 404)
 
   const override = await prisma.organizationFeatureFlag.upsert({
     where: { featureFlagId_organizationId: { featureFlagId: flagId, organizationId: orgId } },
     create: { featureFlagId: flagId, organizationId: orgId, enabled, value },
     update: { enabled, value },
-    select: { id: true, featureFlagId: true, organizationId: true, enabled: true, value: true, createdAt: true, updatedAt: true },
+    select: {
+      id: true,
+      featureFlagId: true,
+      organizationId: true,
+      enabled: true,
+      value: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   })
 
   return { override }

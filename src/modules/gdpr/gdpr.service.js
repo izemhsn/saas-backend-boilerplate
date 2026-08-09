@@ -25,60 +25,106 @@ export const exportData = async (userId) => {
 
   if (!user) throw httpError('User not found', 404)
 
-  const [refreshTokens, memberships, ownedOrganizations, subscriptions, apiKeys, auditLogs, sentInvitations, receivedInvitations, notifications, notificationPreference] =
-    await Promise.all([
-      prisma.refreshToken.findMany({
-        where: { userId },
-        select: { id: true, userAgent: true, ipAddress: true, revoked: true, expiresAt: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.organizationMember.findMany({
-        where: { userId },
-        select: { id: true, role: true, createdAt: true, organization: { select: { id: true, name: true, slug: true } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.organization.findMany({
-        where: { ownerId: userId, deletedAt: null },
-        select: { id: true, name: true, slug: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.subscription.findMany({
-        where: { userId },
-        select: { id: true, status: true, trialEndsAt: true, currentPeriodStart: true, currentPeriodEnd: true, canceledAt: true, createdAt: true, plan: { select: { name: true, interval: true } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.apiKey.findMany({
-        where: { userId, deletedAt: null },
-        select: { id: true, name: true, keyPrefix: true, scopes: true, lastUsedAt: true, expiresAt: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.auditLog.findMany({
-        where: { userId },
-        select: { id: true, action: true, ipAddress: true, userAgent: true, metadata: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-      prisma.organizationInvitation.findMany({
-        where: { inviterId: userId },
-        select: { id: true, inviteeEmail: true, role: true, status: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.organizationInvitation.findMany({
-        where: { inviteeId: userId },
-        select: { id: true, inviteeEmail: true, role: true, status: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.notification.findMany({
-        where: { userId },
-        select: { id: true, type: true, title: true, message: true, readAt: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-      prisma.notificationPreference.findUnique({
-        where: { userId },
-        select: { emailEnabled: true, pushEnabled: true, inAppEnabled: true, mutedTypes: true },
-      }),
-    ])
+  const [
+    refreshTokens,
+    memberships,
+    ownedOrganizations,
+    subscriptions,
+    apiKeys,
+    auditLogs,
+    sentInvitations,
+    receivedInvitations,
+    notifications,
+    notificationPreference,
+  ] = await Promise.all([
+    prisma.refreshToken.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        userAgent: true,
+        ipAddress: true,
+        revoked: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.organizationMember.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        role: true,
+        createdAt: true,
+        organization: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.organization.findMany({
+      where: { ownerId: userId, deletedAt: null },
+      select: { id: true, name: true, slug: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.subscription.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        status: true,
+        trialEndsAt: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        canceledAt: true,
+        createdAt: true,
+        plan: { select: { name: true, interval: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.apiKey.findMany({
+      where: { userId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        keyPrefix: true,
+        scopes: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.auditLog.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        action: true,
+        ipAddress: true,
+        userAgent: true,
+        metadata: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }),
+    prisma.organizationInvitation.findMany({
+      where: { inviterId: userId },
+      select: { id: true, inviteeEmail: true, role: true, status: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.organizationInvitation.findMany({
+      where: { inviteeId: userId },
+      select: { id: true, inviteeEmail: true, role: true, status: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.notification.findMany({
+      where: { userId },
+      select: { id: true, type: true, title: true, message: true, readAt: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }),
+    prisma.notificationPreference.findUnique({
+      where: { userId },
+      select: { emailEnabled: true, pushEnabled: true, inAppEnabled: true, mutedTypes: true },
+    }),
+  ])
 
   return {
     user,
@@ -109,7 +155,10 @@ export const deleteAccount = async (userId, password) => {
   // OAuth-only accounts have no password — they must unlink Google first
   // or use a different deletion path. For now, reject with a helpful message.
   if (!user.password) {
-    throw httpError('This account has no password set. Please set a password before deleting your account.', 400)
+    throw httpError(
+      'This account has no password set. Please set a password before deleting your account.',
+      400,
+    )
   }
 
   const valid = await comparePassword(password, user.password)

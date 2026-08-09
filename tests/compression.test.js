@@ -4,27 +4,21 @@ import app from '../src/app.js'
 
 describe('Compression middleware', () => {
   it('compresses responses when Accept-Encoding includes gzip', async () => {
-    const res = await request(app)
-      .get('/health')
-      .set('Accept-Encoding', 'gzip')
+    const res = await request(app).get('/health').set('Accept-Encoding', 'gzip')
 
     expect(res.status).toBe(200)
     expect(res.headers['content-encoding']).toBe('gzip')
   })
 
   it('does not compress when client requests identity encoding', async () => {
-    const res = await request(app)
-      .get('/health')
-      .set('Accept-Encoding', 'identity')
+    const res = await request(app).get('/health').set('Accept-Encoding', 'identity')
 
     expect(res.status).toBe(200)
     expect(res.headers['content-encoding']).toBeUndefined()
   })
 
   it('compresses JSON API responses', async () => {
-    const res = await request(app)
-      .get('/health')
-      .set('Accept-Encoding', 'gzip')
+    const res = await request(app).get('/health').set('Accept-Encoding', 'gzip')
 
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toMatch(/json/)
@@ -33,9 +27,7 @@ describe('Compression middleware', () => {
   })
 
   it('sets Vary: Accept-Encoding header', async () => {
-    const res = await request(app)
-      .get('/health')
-      .set('Accept-Encoding', 'gzip')
+    const res = await request(app).get('/health').set('Accept-Encoding', 'gzip')
 
     expect(res.status).toBe(200)
     expect(res.headers['vary'].toLowerCase()).toContain('accept-encoding')

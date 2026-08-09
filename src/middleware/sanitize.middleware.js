@@ -12,10 +12,7 @@ const ON_EVENT_RE = /\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]*)/gi
 
 export const sanitizeString = (str) => {
   if (typeof str !== 'string') return str
-  return str
-    .replace(HTML_TAG_RE, '')
-    .replace(JS_URI_RE, '')
-    .replace(ON_EVENT_RE, '')
+  return str.replace(HTML_TAG_RE, '').replace(JS_URI_RE, '').replace(ON_EVENT_RE, '')
 }
 
 export const sanitizeValue = (value, depth = 0) => {

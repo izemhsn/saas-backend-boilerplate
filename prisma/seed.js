@@ -223,9 +223,23 @@ async function main() {
     const auditActions = [
       { action: 'USER_REGISTER', userId: owner.id, metadata: { source: 'seed' } },
       { action: 'USER_LOGIN', userId: owner.id, metadata: { source: 'seed', ip: '127.0.0.1' } },
-      { action: 'ORG_CREATED', userId: owner.id, organizationId: org.id, metadata: { source: 'seed', name: org.name } },
-      { action: 'MEMBER_ADDED', userId: owner.id, organizationId: org.id, metadata: { source: 'seed', member: member1.email } },
-      { action: 'SUBSCRIPTION_CREATED', userId: owner.id, metadata: { source: 'seed', plan: proPlan.name } },
+      {
+        action: 'ORG_CREATED',
+        userId: owner.id,
+        organizationId: org.id,
+        metadata: { source: 'seed', name: org.name },
+      },
+      {
+        action: 'MEMBER_ADDED',
+        userId: owner.id,
+        organizationId: org.id,
+        metadata: { source: 'seed', member: member1.email },
+      },
+      {
+        action: 'SUBSCRIPTION_CREATED',
+        userId: owner.id,
+        metadata: { source: 'seed', plan: proPlan.name },
+      },
     ]
 
     for (const entry of auditActions) {
@@ -296,7 +310,13 @@ async function main() {
 
   // Enable beta_dashboard for the demo org via override
   await prisma.organizationFeatureFlag.upsert({
-    where: { featureFlagId_organizationId: { featureFlagId: (await prisma.featureFlag.findUnique({ where: { key: 'beta_dashboard' } })).id, organizationId: org.id } },
+    where: {
+      featureFlagId_organizationId: {
+        featureFlagId: (await prisma.featureFlag.findUnique({ where: { key: 'beta_dashboard' } }))
+          .id,
+        organizationId: org.id,
+      },
+    },
     update: {},
     create: {
       featureFlagId: (await prisma.featureFlag.findUnique({ where: { key: 'beta_dashboard' } })).id,
@@ -306,7 +326,9 @@ async function main() {
     },
   })
 
-  console.log(`  ✓ Feature flags: beta_dashboard, advanced_analytics, new_onboarding_flow (50% rollout)`)
+  console.log(
+    `  ✓ Feature flags: beta_dashboard, advanced_analytics, new_onboarding_flow (50% rollout)`,
+  )
 
   console.log('\n✅ Seed complete!\n')
   console.log('  Demo credentials (password for all): Password123')

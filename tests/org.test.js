@@ -111,9 +111,7 @@ describe('GET /api/organizations', () => {
       .send({ name: 'List Org', slug: `list-org-${RUN_ID}` })
     createdOrgIds.push(createRes.body.data.organization.id)
 
-    const res = await request(app)
-      .get('/api/organizations')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/organizations').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(200)
     expect(res.body.data.organizations.length).toBeGreaterThanOrEqual(1)
@@ -397,9 +395,9 @@ describe('GET /api/organizations/:orgId/members', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.data.members.length).toBeGreaterThanOrEqual(1)
-    expect(
-      res.body.data.members.some((m) => m.user.email.includes('members-search-target')),
-    ).toBe(true)
+    expect(res.body.data.members.some((m) => m.user.email.includes('members-search-target'))).toBe(
+      true,
+    )
   })
 })
 

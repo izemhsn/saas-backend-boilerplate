@@ -120,7 +120,9 @@ describe('sanitizeValue — XSS in nested structures', () => {
 
 describe('sanitizeValue — combined attacks', () => {
   it('handles prototype pollution + XSS + operator injection together', () => {
-    const input = JSON.parse('{"__proto__":{"admin":true},"$where":"this.password","name":"<script>document.cookie</script>","bio":"javascript:steal()","profile":{"onload":"evil()","real":"data"}}')
+    const input = JSON.parse(
+      '{"__proto__":{"admin":true},"$where":"this.password","name":"<script>document.cookie</script>","bio":"javascript:steal()","profile":{"onload":"evil()","real":"data"}}',
+    )
     const result = sanitizeValue(input)
     expect(Object.keys(result)).not.toContain('__proto__')
     expect(result.$where).toBeUndefined()

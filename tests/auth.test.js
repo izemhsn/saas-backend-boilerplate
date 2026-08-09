@@ -100,9 +100,7 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(401)
   })
 
-  it(
-    'locks the account after 5 failed attempts',
-    async () => {
+  it('locks the account after 5 failed attempts', async () => {
     const { email } = await registerUser('lockout')
 
     // Make 5 failed attempts
@@ -117,9 +115,7 @@ describe('POST /api/auth/login', () => {
       .send({ email, password: VALID_PASSWORD })
     expect(lockedRes.status).toBe(423)
     expect(lockedRes.body.message).toMatch(/locked/i)
-  },
-    15000,
-  )
+  }, 15000)
 })
 
 describe('GET /api/auth/me', () => {

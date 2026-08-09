@@ -44,7 +44,13 @@ const buildApp = (...middleware) => {
   const testApp = express()
   testApp.use(express.json())
   testApp.get('/test', ...middleware, (req, res) => {
-    res.json({ success: true, user: req.user, apiKey: req.apiKey, subscription: req.subscription, featureFlag: req.featureFlag })
+    res.json({
+      success: true,
+      user: req.user,
+      apiKey: req.apiKey,
+      subscription: req.subscription,
+      featureFlag: req.featureFlag,
+    })
   })
   return testApp
 }
@@ -68,7 +74,10 @@ describe('authenticateApiKey middleware', () => {
   it('attaches req.user and req.apiKey on success', async () => {
     const { res: registerRes } = await registerUser('apikey-valid')
     const userId = registerRes.body.data.user.id
-    const { apiKey, key } = await createApiKey(userId, { name: 'Test Key', scopes: ['read', 'write'] })
+    const { apiKey, key } = await createApiKey(userId, {
+      name: 'Test Key',
+      scopes: ['read', 'write'],
+    })
     createdKeyIds.push(apiKey.id)
 
     const testApp = buildApp(authenticateApiKey)
@@ -103,7 +112,10 @@ describe('requireScope middleware', () => {
   it('passes when the scope is present', async () => {
     const { res: registerRes } = await registerUser('apikey-scope-ok')
     const userId = registerRes.body.data.user.id
-    const { apiKey, key } = await createApiKey(userId, { name: 'Write Key', scopes: ['read', 'write'] })
+    const { apiKey, key } = await createApiKey(userId, {
+      name: 'Write Key',
+      scopes: ['read', 'write'],
+    })
     createdKeyIds.push(apiKey.id)
 
     const testApp = buildApp(authenticateApiKey, requireScope('write'))

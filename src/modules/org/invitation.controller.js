@@ -43,7 +43,10 @@ export const listInvitations = async (req, res, next) => {
 
 export const cancelInvitation = async (req, res, next) => {
   try {
-    const data = await invitationService.cancelInvitation(req.tenant.id, req.validated.params.invitationId)
+    const data = await invitationService.cancelInvitation(
+      req.tenant.id,
+      req.validated.params.invitationId,
+    )
     auditLog('INVITATION_CANCELED', {
       userId: req.user.id,
       organizationId: req.tenant.id,

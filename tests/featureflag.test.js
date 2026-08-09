@@ -14,11 +14,13 @@ const createdOrgIds = []
 
 async function registerUser(label, role = 'USER') {
   const email = emailFor(label)
-  const res = await request(app).post('/api/auth/register').send({
-    name: `Test ${label}`,
-    email,
-    password: VALID_PASSWORD,
-  })
+  const res = await request(app)
+    .post('/api/auth/register')
+    .send({
+      name: `Test ${label}`,
+      email,
+      password: VALID_PASSWORD,
+    })
   createdUserIds.push(res.body.data.user.id)
 
   if (role === 'ADMIN') {
@@ -30,7 +32,12 @@ async function registerUser(label, role = 'USER') {
 
 async function createOrg(ownerId, slug) {
   const org = await prisma.organization.create({
-    data: { name: `Test Org ${slug}`, slug, ownerId, members: { create: { userId: ownerId, role: 'OWNER' } } },
+    data: {
+      name: `Test Org ${slug}`,
+      slug,
+      ownerId,
+      members: { create: { userId: ownerId, role: 'OWNER' } },
+    },
     select: { id: true },
   })
   createdOrgIds.push(org.id)
@@ -100,7 +107,12 @@ describe('POST /api/feature-flags', () => {
     const res = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-noauth-${RUN_ID}`, name: 'Test', type: 'BOOLEAN', value: { enabled: true } })
+      .send({
+        key: `test-flag-noauth-${RUN_ID}`,
+        name: 'Test',
+        type: 'BOOLEAN',
+        value: { enabled: true },
+      })
 
     expect(res.status).toBe(403)
   })
@@ -142,9 +154,7 @@ describe('GET /api/feature-flags', () => {
   it('rejects non-admin', async () => {
     const { token } = await registerUser('list-user')
 
-    const res = await request(app)
-      .get('/api/feature-flags')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/feature-flags').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(403)
   })
@@ -157,7 +167,12 @@ describe('GET /api/feature-flags/:flagId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-get-${RUN_ID}`, name: 'Get Flag', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-get-${RUN_ID}`,
+        name: 'Get Flag',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -187,7 +202,12 @@ describe('PATCH /api/feature-flags/:flagId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-update-${RUN_ID}`, name: 'Update Flag', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-update-${RUN_ID}`,
+        name: 'Update Flag',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -206,7 +226,12 @@ describe('PATCH /api/feature-flags/:flagId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-empty-${RUN_ID}`, name: 'Empty Update', type: 'BOOLEAN', value: { enabled: true } })
+      .send({
+        key: `test-flag-empty-${RUN_ID}`,
+        name: 'Empty Update',
+        type: 'BOOLEAN',
+        value: { enabled: true },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -225,7 +250,12 @@ describe('DELETE /api/feature-flags/:flagId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-delete-${RUN_ID}`, name: 'Delete Flag', type: 'BOOLEAN', value: { enabled: true } })
+      .send({
+        key: `test-flag-delete-${RUN_ID}`,
+        name: 'Delete Flag',
+        type: 'BOOLEAN',
+        value: { enabled: true },
+      })
 
     const res = await request(app)
       .delete(`/api/feature-flags/${createRes.body.data.flag.id}`)
@@ -234,7 +264,9 @@ describe('DELETE /api/feature-flags/:flagId', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.message).toMatch(/deleted/)
 
-    const dbFlag = await prisma.featureFlag.findUnique({ where: { id: createRes.body.data.flag.id } })
+    const dbFlag = await prisma.featureFlag.findUnique({
+      where: { id: createRes.body.data.flag.id },
+    })
     expect(dbFlag).toBeNull()
   })
 
@@ -257,7 +289,12 @@ describe('POST /api/feature-flags/:flagId/overrides/:orgId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-override-${RUN_ID}`, name: 'Override Flag', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-override-${RUN_ID}`,
+        name: 'Override Flag',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -276,7 +313,12 @@ describe('POST /api/feature-flags/:flagId/overrides/:orgId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-noorg-${RUN_ID}`, name: 'No Org Flag', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-noorg-${RUN_ID}`,
+        name: 'No Org Flag',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -296,7 +338,12 @@ describe('DELETE /api/feature-flags/:flagId/overrides/:orgId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-rm-override-${RUN_ID}`, name: 'RM Override Flag', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-rm-override-${RUN_ID}`,
+        name: 'RM Override Flag',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     await request(app)
@@ -312,7 +359,12 @@ describe('DELETE /api/feature-flags/:flagId/overrides/:orgId', () => {
     expect(res.body.data.message).toMatch(/removed/)
 
     const override = await prisma.organizationFeatureFlag.findUnique({
-      where: { featureFlagId_organizationId: { featureFlagId: createRes.body.data.flag.id, organizationId: org.id } },
+      where: {
+        featureFlagId_organizationId: {
+          featureFlagId: createRes.body.data.flag.id,
+          organizationId: org.id,
+        },
+      },
     })
     expect(override).toBeNull()
   })
@@ -324,7 +376,12 @@ describe('DELETE /api/feature-flags/:flagId/overrides/:orgId', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-rm404-${RUN_ID}`, name: 'RM 404 Flag', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-rm404-${RUN_ID}`,
+        name: 'RM 404 Flag',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -342,7 +399,12 @@ describe('GET /api/feature-flags/evaluate', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-eval-bool-${RUN_ID}`, name: 'Eval Bool', type: 'BOOLEAN', value: { enabled: true } })
+      .send({
+        key: `test-flag-eval-bool-${RUN_ID}`,
+        name: 'Eval Bool',
+        type: 'BOOLEAN',
+        value: { enabled: true },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -360,7 +422,12 @@ describe('GET /api/feature-flags/evaluate', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-eval-off-${RUN_ID}`, name: 'Eval Off', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-eval-off-${RUN_ID}`,
+        name: 'Eval Off',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const res = await request(app)
@@ -390,7 +457,12 @@ describe('GET /api/feature-flags/evaluate', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-eval-override-${RUN_ID}`, name: 'Eval Override', type: 'BOOLEAN', value: { enabled: false } })
+      .send({
+        key: `test-flag-eval-override-${RUN_ID}`,
+        name: 'Eval Override',
+        type: 'BOOLEAN',
+        value: { enabled: false },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     await request(app)
@@ -417,7 +489,12 @@ describe('GET /api/feature-flags/evaluate', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-eval-plan-${RUN_ID}`, name: 'Eval Plan', type: 'PLAN', value: { plans: ['Pro', 'Enterprise'] } })
+      .send({
+        key: `test-flag-eval-plan-${RUN_ID}`,
+        name: 'Eval Plan',
+        type: 'PLAN',
+        value: { plans: ['Pro', 'Enterprise'] },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     // Without planName (no org), should be false
@@ -452,7 +529,12 @@ describe('Feature flag service — PERCENTAGE evaluation', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-pct100-${RUN_ID}`, name: 'PCT 100', type: 'PERCENTAGE', value: { percentage: 100 } })
+      .send({
+        key: `test-flag-pct100-${RUN_ID}`,
+        name: 'PCT 100',
+        type: 'PERCENTAGE',
+        value: { percentage: 100 },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const result = await flagService.evaluateFlag(`test-flag-pct100-${RUN_ID}`)
@@ -465,7 +547,12 @@ describe('Feature flag service — PERCENTAGE evaluation', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-pct0-${RUN_ID}`, name: 'PCT 0', type: 'PERCENTAGE', value: { percentage: 0 } })
+      .send({
+        key: `test-flag-pct0-${RUN_ID}`,
+        name: 'PCT 0',
+        type: 'PERCENTAGE',
+        value: { percentage: 0 },
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const result = await flagService.evaluateFlag(`test-flag-pct0-${RUN_ID}`)
@@ -478,7 +565,13 @@ describe('Feature flag service — PERCENTAGE evaluation', () => {
     const createRes = await request(app)
       .post('/api/feature-flags')
       .set('Authorization', `Bearer ${token}`)
-      .send({ key: `test-flag-inactive-${RUN_ID}`, name: 'Inactive', type: 'BOOLEAN', value: { enabled: true }, active: false })
+      .send({
+        key: `test-flag-inactive-${RUN_ID}`,
+        name: 'Inactive',
+        type: 'BOOLEAN',
+        value: { enabled: true },
+        active: false,
+      })
     createdFlagIds.push(createRes.body.data.flag.id)
 
     const result = await flagService.evaluateFlag(`test-flag-inactive-${RUN_ID}`)

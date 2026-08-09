@@ -43,11 +43,22 @@ describe('API documentation', () => {
       const res = await request(app).get('/api/docs')
       const tagNames = res.body.tags.map((t) => t.name)
 
-      expect(tagNames).toEqual(expect.arrayContaining([
-        'Auth', 'Organizations', 'Admin', 'Billing', 'API Keys',
-        'Sessions', 'Audit', 'Invitations', 'Notifications', 'Feature Flags',
-        'Health', 'GDPR',
-      ]))
+      expect(tagNames).toEqual(
+        expect.arrayContaining([
+          'Auth',
+          'Organizations',
+          'Admin',
+          'Billing',
+          'API Keys',
+          'Sessions',
+          'Audit',
+          'Invitations',
+          'Notifications',
+          'Feature Flags',
+          'Health',
+          'GDPR',
+        ]),
+      )
     })
 
     it('documents the register endpoint with request body and responses', async () => {
@@ -216,7 +227,12 @@ describe('API documentation', () => {
 
     it('handles transforms by using the pre-transform shape', () => {
       const schema = z.object({
-        value: z.string().datetime().optional().nullable().transform((v) => v ?? null),
+        value: z
+          .string()
+          .datetime()
+          .optional()
+          .nullable()
+          .transform((v) => v ?? null),
       })
       // Should not throw.
       const result = zodToOpenApi(schema)

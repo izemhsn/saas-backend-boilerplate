@@ -5,7 +5,11 @@ import { hashPassword, comparePassword, dummyCompare } from '../../utils/hash.js
 import { signToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt.js'
 import { httpError } from '../../utils/httpError.js'
 import { queueVerificationEmail, queuePasswordResetEmail } from '../jobs/email.producer.js'
-import { getGoogleClient, isGoogleConfigured, getGoogleAuthUrl as buildGoogleAuthUrl } from '../../config/google.js'
+import {
+  getGoogleClient,
+  isGoogleConfigured,
+  getGoogleAuthUrl as buildGoogleAuthUrl,
+} from '../../config/google.js'
 import { createChallenge } from './twofa.service.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
@@ -196,7 +200,18 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
 
   const storedToken = await prisma.refreshToken.findUnique({
     where: { token: hashToken(refreshToken) },
-    include: { user: { select: { id: true, email: true, role: true, tokenVersion: true, banned: true, suspendedUntil: true } } },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          tokenVersion: true,
+          banned: true,
+          suspendedUntil: true,
+        },
+      },
+    },
   })
 
   // Reuse detection: if the token exists but is revoked, someone is trying to reuse
@@ -276,7 +291,10 @@ export const verifyEmail = async ({ token }) => {
     })
   } catch (err) {
     if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw httpError('This email address is already in use. Please request a new change email.', 409)
+      throw httpError(
+        'This email address is already in use. Please request a new change email.',
+        409,
+      )
     }
     throw err
   }
@@ -384,7 +402,8 @@ export const changePassword = async (userId, { currentPassword, newPassword }) =
   })
   if (!user) throw httpError('User not found', 404)
 
-  if (!user.password) throw httpError('This account has no password set. Please use Google sign-in.', 400)
+  if (!user.password)
+    throw httpError('This account has no password set. Please use Google sign-in.', 400)
 
   const valid = await comparePassword(currentPassword, user.password)
   if (!valid) throw httpError('Current password is incorrect', 401)
@@ -407,7 +426,8 @@ export const changeEmail = async (userId, { newEmail, password }) => {
   })
   if (!user) throw httpError('User not found', 404)
 
-  if (!user.password) throw httpError('This account has no password set. Please use Google sign-in.', 400)
+  if (!user.password)
+    throw httpError('This account has no password set. Please use Google sign-in.', 400)
 
   const valid = await comparePassword(password, user.password)
   if (!valid) throw httpError('Password is incorrect', 401)
@@ -503,7 +523,13 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
   if (!user) {
     user = await prisma.user.findFirst({
       where: { email: normalizedEmail, deletedAt: null },
-      select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true, googleId: true },
+      select: {
+        ...userSelect,
+        tokenVersion: true,
+        banned: true,
+        suspendedUntil: true,
+        googleId: true,
+      },
     })
     if (user) {
       if (user.googleId && user.googleId !== googleId) {

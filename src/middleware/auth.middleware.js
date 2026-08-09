@@ -19,7 +19,14 @@ export const authenticate = async (req, res, next) => {
     // Verify the user still exists and the token version matches
     const user = await prisma.user.findFirst({
       where: { id: decoded.id, deletedAt: null },
-      select: { id: true, email: true, role: true, tokenVersion: true, banned: true, suspendedUntil: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        tokenVersion: true,
+        banned: true,
+        suspendedUntil: true,
+      },
     })
 
     if (!user) {
@@ -35,7 +42,10 @@ export const authenticate = async (req, res, next) => {
     }
 
     if (user.suspendedUntil && user.suspendedUntil > new Date()) {
-      return res.status(403).json({ success: false, message: `Your account is suspended until ${user.suspendedUntil.toISOString()}` })
+      return res.status(403).json({
+        success: false,
+        message: `Your account is suspended until ${user.suspendedUntil.toISOString()}`,
+      })
     }
 
     req.user = { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion }

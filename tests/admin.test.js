@@ -49,9 +49,7 @@ describe('Admin route authorization', () => {
     const { res: registerRes } = await registerUser('non-admin')
     const { token } = registerRes.body.data
 
-    const res = await request(app)
-      .get('/api/admin/users')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/admin/users').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(403)
   })
@@ -418,9 +416,7 @@ describe('Ban/Suspend enforcement', () => {
       data: { banned: true, bannedAt: new Date() },
     })
 
-    const res = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${targetToken}`)
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${targetToken}`)
 
     expect(res.status).toBe(403)
     expect(res.body.message).toMatch(/banned/i)
@@ -441,9 +437,7 @@ describe('Ban/Suspend enforcement', () => {
       data: { banned: true, bannedAt: new Date() },
     })
 
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ email, password: VALID_PASSWORD })
+    const res = await request(app).post('/api/auth/login').send({ email, password: VALID_PASSWORD })
 
     expect(res.status).toBe(403)
     expect(res.body.message).toMatch(/banned/i)

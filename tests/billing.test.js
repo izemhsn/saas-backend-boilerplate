@@ -205,13 +205,11 @@ describe('POST /api/billing/checkout', () => {
 
   it('rejects unauthenticated request', async () => {
     const plan = await prisma.plan.findFirst({ where: { name: 'Free' } })
-    const res = await request(app)
-      .post('/api/billing/checkout')
-      .send({
-        planId: plan.id,
-        successUrl: 'http://localhost:3000/success',
-        cancelUrl: 'http://localhost:3000/cancel',
-      })
+    const res = await request(app).post('/api/billing/checkout').send({
+      planId: plan.id,
+      successUrl: 'http://localhost:3000/success',
+      cancelUrl: 'http://localhost:3000/cancel',
+    })
 
     expect(res.status).toBe(401)
   })

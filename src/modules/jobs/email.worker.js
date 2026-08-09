@@ -1,7 +1,11 @@
 import { Worker } from 'bullmq'
 import { getRedisConnection } from '../../config/redis.js'
 import logger from '../../utils/logger.js'
-import { sendVerificationEmail, sendPasswordResetEmail, sendOrgInvitationEmail } from '../shared/email.service.js'
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  sendOrgInvitationEmail,
+} from '../shared/email.service.js'
 
 const QUEUE_NAME = 'email'
 

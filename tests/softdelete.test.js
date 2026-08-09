@@ -13,11 +13,13 @@ let adminToken = null
 
 async function registerUser(label) {
   const email = emailFor(label)
-  const res = await request(app).post('/api/auth/register').send({
-    name: `Test ${label}`,
-    email,
-    password: VALID_PASSWORD,
-  })
+  const res = await request(app)
+    .post('/api/auth/register')
+    .send({
+      name: `Test ${label}`,
+      email,
+      password: VALID_PASSWORD,
+    })
   createdUserIds.push(res.body.data.user.id)
   return { email, userId: res.body.data.user.id, token: res.body.data.token }
 }
@@ -80,9 +82,7 @@ describe('Soft delete — User', () => {
       .set('Authorization', `Bearer ${adminToken}`)
 
     // Try to use existing token
-    const res = await request(app)
-      .get('/api/sessions')
-      .set('Authorization', `Bearer ${token}`)
+    const res = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
 
     expect(res.status).toBe(401)
   })
@@ -321,13 +321,9 @@ describe('Soft delete — API Key', () => {
 
     const keyId = createRes.body.data.apiKey.id
 
-    await request(app)
-      .delete(`/api/api-keys/${keyId}`)
-      .set('Authorization', `Bearer ${user.token}`)
+    await request(app).delete(`/api/api-keys/${keyId}`).set('Authorization', `Bearer ${user.token}`)
 
-    const res = await request(app)
-      .get('/api/api-keys')
-      .set('Authorization', `Bearer ${user.token}`)
+    const res = await request(app).get('/api/api-keys').set('Authorization', `Bearer ${user.token}`)
 
     const found = res.body.data.apiKeys.find((k) => k.id === keyId)
     expect(found).toBeUndefined()
@@ -344,14 +340,10 @@ describe('Soft delete — API Key', () => {
     const keyId = createRes.body.data.apiKey.id
     const rawKey = createRes.body.data.key
 
-    await request(app)
-      .delete(`/api/api-keys/${keyId}`)
-      .set('Authorization', `Bearer ${user.token}`)
+    await request(app).delete(`/api/api-keys/${keyId}`).set('Authorization', `Bearer ${user.token}`)
 
     // Try to use the deleted key
-    const res = await request(app)
-      .get('/api/api-keys')
-      .set('Authorization', `Bearer ${rawKey}`)
+    const res = await request(app).get('/api/api-keys').set('Authorization', `Bearer ${rawKey}`)
 
     expect(res.status).toBe(401)
   })
@@ -366,9 +358,7 @@ describe('Soft delete — API Key', () => {
 
     const keyId = createRes.body.data.apiKey.id
 
-    await request(app)
-      .delete(`/api/api-keys/${keyId}`)
-      .set('Authorization', `Bearer ${user.token}`)
+    await request(app).delete(`/api/api-keys/${keyId}`).set('Authorization', `Bearer ${user.token}`)
 
     const res = await request(app)
       .post(`/api/api-keys/${keyId}/restore`)

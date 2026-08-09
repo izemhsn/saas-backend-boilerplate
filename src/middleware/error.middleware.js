@@ -6,7 +6,10 @@ import { getSentry } from '../config/sentry.js'
 export const errorHandler = (err, req, res, _next) => {
   const statusCode = err.statusCode ?? 500
   const isProduction = process.env.NODE_ENV === 'production'
-  const message = statusCode >= 500 && isProduction ? 'Internal Server Error' : err.message ?? 'Internal Server Error'
+  const message =
+    statusCode >= 500 && isProduction
+      ? 'Internal Server Error'
+      : (err.message ?? 'Internal Server Error')
 
   if (statusCode >= 500) {
     logger.error({ err, requestId: req.id }, 'Unhandled error')

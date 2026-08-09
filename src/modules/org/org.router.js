@@ -1,7 +1,11 @@
 import { Router } from 'express'
 import { validate } from '../../middleware/validate.middleware.js'
 import { authenticate } from '../../middleware/auth.middleware.js'
-import { requireTenant, requireOrgRole, requireTenantIncludeDeleted } from '../../middleware/tenant.middleware.js'
+import {
+  requireTenant,
+  requireOrgRole,
+  requireTenantIncludeDeleted,
+} from '../../middleware/tenant.middleware.js'
 import {
   createOrgSchema,
   updateOrgSchema,

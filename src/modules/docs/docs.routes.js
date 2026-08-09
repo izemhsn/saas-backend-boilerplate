@@ -52,11 +52,7 @@ import {
 } from '../org/invitation.schema.js'
 import { listUsersSchema, userIdParamSchema, updateUserSchema } from '../admin/admin.schema.js'
 import { checkoutSchema, portalSchema, listPlansSchema } from '../billing/billing.schema.js'
-import {
-  createApiKeySchema,
-  keyIdParamSchema,
-  listApiKeysSchema,
-} from '../apikey/apikey.schema.js'
+import { createApiKeySchema, keyIdParamSchema, listApiKeysSchema } from '../apikey/apikey.schema.js'
 import { listSessionsSchema, sessionIdParamSchema } from '../session/session.schema.js'
 import { listAuditLogsSchema, listUserAuditLogsSchema } from '../audit/audit.schema.js'
 import {
@@ -86,12 +82,7 @@ const created = (data, description = 'Created') => ({ 201: { description, data }
 const noData = (description = 'OK') => ({ 200: { description, data: s.messageData } })
 
 const errors = (...codes) =>
-  Object.fromEntries(
-    codes.map((code) => [
-      code,
-      { description: ERROR_MESSAGES[code] ?? 'Error' },
-    ]),
-  )
+  Object.fromEntries(codes.map((code) => [code, { description: ERROR_MESSAGES[code] ?? 'Error' }]))
 
 const ERROR_MESSAGES = {
   400: 'Validation error or bad request',
@@ -118,7 +109,10 @@ export const operations = [
     description: 'Cheap liveness check with no DB dependency. Rate-limited.',
     security: null,
     responses: {
-      200: { description: 'Service is live', data: z.object({ status: z.string(), timestamp: s.isoDate }) },
+      200: {
+        description: 'Service is live',
+        data: z.object({ status: z.string(), timestamp: s.isoDate }),
+      },
     },
   },
   {
@@ -129,8 +123,14 @@ export const operations = [
     description: 'Pings the database to verify the service is ready to serve traffic.',
     security: null,
     responses: {
-      200: { description: 'Service is ready', data: z.object({ status: z.string(), timestamp: s.isoDate }) },
-      503: { description: 'Database unavailable', data: z.object({ status: z.string(), message: z.string() }) },
+      200: {
+        description: 'Service is ready',
+        data: z.object({ status: z.string(), timestamp: s.isoDate }),
+      },
+      503: {
+        description: 'Database unavailable',
+        data: z.object({ status: z.string(), message: z.string() }),
+      },
     },
   },
 
@@ -195,7 +195,8 @@ export const operations = [
     path: '/api/auth/forgot-password',
     tag: 'Auth',
     summary: 'Request a password reset',
-    description: 'Always returns 200 regardless of whether the email exists (prevents enumeration).',
+    description:
+      'Always returns 200 regardless of whether the email exists (prevents enumeration).',
     security: null,
     request: forgotPasswordSchema,
     responses: { ...noData('Reset email queued if the account exists'), ...errors(400) },
@@ -222,7 +223,8 @@ export const operations = [
     path: '/api/auth/google',
     tag: 'Auth',
     summary: 'Log in with Google',
-    description: 'Exchanges a Google authorization code for tokens. Links to an existing account when emails match.',
+    description:
+      'Exchanges a Google authorization code for tokens. Links to an existing account when emails match.',
     security: null,
     request: googleLoginSchema,
     responses: { ...ok(s.authTokens, 'Tokens issued'), ...errors(400, 401) },
@@ -242,7 +244,8 @@ export const operations = [
     path: '/api/auth/2fa/setup',
     tag: 'Auth',
     summary: 'Start 2FA setup',
-    description: 'Generates a TOTP secret and QR code. 2FA is not enabled until `/2fa/enable` is called.',
+    description:
+      'Generates a TOTP secret and QR code. 2FA is not enabled until `/2fa/enable` is called.',
     security: 'bearer',
     responses: { ...ok(s.twoFactorSetupData, 'Secret + QR code'), ...errors(401) },
   },
@@ -254,7 +257,10 @@ export const operations = [
     description: 'Verifies the first TOTP code and enables 2FA, returning single-use backup codes.',
     security: 'bearer',
     request: enableTwoFactorSchema,
-    responses: { ...ok(s.twoFactorEnableData, '2FA enabled with backup codes'), ...errors(400, 401) },
+    responses: {
+      ...ok(s.twoFactorEnableData, '2FA enabled with backup codes'),
+      ...errors(400, 401),
+    },
   },
   {
     method: 'POST',
@@ -362,7 +368,10 @@ export const operations = [
     description: 'Requires OWNER or ADMIN role.',
     security: 'orgRole',
     request: updateOrgSchema,
-    responses: { ...ok(z.object({ organization: s.organization })), ...errors(400, 401, 403, 404, 409) },
+    responses: {
+      ...ok(z.object({ organization: s.organization })),
+      ...errors(400, 401, 403, 404, 409),
+    },
   },
   {
     method: 'DELETE',
@@ -424,7 +433,10 @@ export const operations = [
     description: 'Requires OWNER or ADMIN role. Sends an invitation email via the queue.',
     security: 'orgRole',
     request: createInvitationSchema,
-    responses: { ...created(z.object({ invitation: s.invitation })), ...errors(400, 401, 403, 404, 409) },
+    responses: {
+      ...created(z.object({ invitation: s.invitation })),
+      ...errors(400, 401, 403, 404, 409),
+    },
   },
   {
     method: 'GET',
@@ -781,7 +793,8 @@ export const operations = [
     path: '/api/feature-flags/evaluate',
     tag: 'Feature Flags',
     summary: 'Evaluate a feature flag',
-    description: 'Resolves an org override (if any) against the flag default. Any authenticated user.',
+    description:
+      'Resolves an org override (if any) against the flag default. Any authenticated user.',
     security: 'bearer',
     request: evaluateFlagSchema,
     responses: { ...ok(s.evaluateFlagData, 'Evaluation result'), ...errors(400, 401, 404) },
@@ -841,7 +854,10 @@ export const operations = [
     summary: 'Set an org override (admin)',
     security: 'admin',
     request: setOverrideSchema,
-    responses: { ...ok(z.object({ override: s.featureFlagOverride })), ...errors(400, 401, 403, 404) },
+    responses: {
+      ...ok(z.object({ override: s.featureFlagOverride })),
+      ...errors(400, 401, 403, 404),
+    },
   },
   {
     method: 'DELETE',

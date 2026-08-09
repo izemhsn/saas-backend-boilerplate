@@ -11,7 +11,10 @@ export const listNotifications = async (req, res, next) => {
 
 export const markAsRead = async (req, res, next) => {
   try {
-    const data = await notificationService.markAsRead(req.user.id, req.validated.params.notificationId)
+    const data = await notificationService.markAsRead(
+      req.user.id,
+      req.validated.params.notificationId,
+    )
     res.json({ success: true, data })
   } catch (err) {
     next(err)
@@ -29,7 +32,10 @@ export const markAllAsRead = async (req, res, next) => {
 
 export const deleteNotification = async (req, res, next) => {
   try {
-    const data = await notificationService.deleteNotification(req.user.id, req.validated.params.notificationId)
+    const data = await notificationService.deleteNotification(
+      req.user.id,
+      req.validated.params.notificationId,
+    )
     res.json({ success: true, data })
   } catch (err) {
     next(err)

@@ -140,7 +140,14 @@ export const verifyApiKey = async (rawKey) => {
       expiresAt: true,
       revokedAt: true,
       user: {
-        select: { id: true, email: true, role: true, banned: true, suspendedUntil: true, deletedAt: true },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          banned: true,
+          suspendedUntil: true,
+          deletedAt: true,
+        },
       },
     },
   })

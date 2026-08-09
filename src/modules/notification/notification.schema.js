@@ -23,7 +23,9 @@ export const updatePreferencesSchema = z.object({
       emailEnabled: z.boolean().optional(),
       pushEnabled: z.boolean().optional(),
       inAppEnabled: z.boolean().optional(),
-      mutedTypes: z.array(z.enum(['SYSTEM', 'ORGANIZATION', 'BILLING', 'SECURITY', 'TEAM'])).optional(),
+      mutedTypes: z
+        .array(z.enum(['SYSTEM', 'ORGANIZATION', 'BILLING', 'SECURITY', 'TEAM']))
+        .optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
       message: 'At least one preference field must be provided',
