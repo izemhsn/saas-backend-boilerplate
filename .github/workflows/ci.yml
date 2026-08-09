@@ -139,19 +139,30 @@ jobs:
 
       - name: Smoke-test the image
         run: |
-          # Start the container with env vars that pass the production boot
+          # Start a Redis container on a custom network so the app can reach it
+          # by hostname. In production mode the rate limiters use a Redis store,
+          # so Redis must be reachable for /health to respond promptly.
+          docker network create smoke-net
+          docker run -d --name smoke-redis --network smoke-net redis:7-alpine
+
+          # Start the app container with env vars that pass the production boot
           # validation (32+ char JWT secrets + CORS_ORIGIN). The /health
           # endpoint doesn't touch the DB, so a dummy DATABASE_URL is fine.
-          docker run -d --name smoke -p 3001:3000 \
+          # REDIS_URL points at the sibling Redis container.
+          docker run -d --name smoke -p 3001:3000 --network smoke-net \
             -e DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" \
+            -e REDIS_URL="redis://smoke-redis:6379" \
             -e JWT_SECRET="ci-smoke-test-jwt-secret-at-least-32-chars" \
             -e JWT_REFRESH_SECRET="ci-smoke-test-jwt-refresh-secret-32-chars" \
             -e CORS_ORIGIN="http://localhost:3000" \
             saas-backend:ci
 
-          # Wait for the server to start (or fail within 10s)
-          timeout 10 bash -c 'until curl -sf http://localhost:3001/health > /dev/null 2>&1; do sleep 0.5; done' \
+          # Wait for the server to start (or fail within 15s — allow time for
+          # the Redis connection to establish before the first request).
+          timeout 15 bash -c 'until curl -sf http://localhost:3001/health > /dev/null 2>&1; do sleep 0.5; done' \
             && echo "Smoke test passed — server responds on /health" \
             || { echo "Smoke test failed — server did not start"; docker logs smoke; exit 1; }
 
-          docker stop smoke || true
+          docker stop smoke smoke-redis || true
+          docker rm smoke smoke-redis || true
+          docker network rm smoke-net || true

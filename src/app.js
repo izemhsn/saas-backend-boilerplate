@@ -92,10 +92,11 @@ app.use(sanitizeRequest)
 // Rate limiting is disabled under test so the Supertest suite isn't throttled
 const skipInTest = () => process.env.NODE_ENV === 'test'
 
-// Use a Redis-backed store so rate limits are shared across instances when scaling
-// horizontally. In test mode the default in-memory store is used (rate limiting is
-// skipped anyway via `skipInTest`).
-const redisStore =
+// Each rate limiter needs its own RedisStore instance — express-rate-limit v7
+// rejects a shared store (ERR_ERL_STORE_REUSE). All stores reuse the same
+// ioredis connection but use distinct key prefixes so counters are isolated.
+// In test mode no store is created (rate limiting is skipped via `skipInTest`).
+const createRedisStore = () =>
   process.env.NODE_ENV !== 'test'
     ? new RedisStore({
         sendCommand: (...args) => getRedisConnection().call(...args),
@@ -108,7 +109,7 @@ const authLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: redisStore,
+  store: createRedisStore(),
 })
 
 const sensitiveLimiter = rateLimit({
@@ -117,7 +118,7 @@ const sensitiveLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: redisStore,
+  store: createRedisStore(),
 })
 
 // Health checks — liveness (no DB, cheap) and readiness (DB ping).
@@ -128,7 +129,7 @@ const healthLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: redisStore,
+  store: createRedisStore(),
 })
 
 app.get('/health', healthLimiter, (req, res) => {
