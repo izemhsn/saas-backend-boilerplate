@@ -1,5 +1,6 @@
 import * as gdprService from './gdpr.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const exportData = async (req, res, next) => {
   try {
@@ -9,7 +10,7 @@ export const exportData = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -26,7 +27,7 @@ export const deleteAccount = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

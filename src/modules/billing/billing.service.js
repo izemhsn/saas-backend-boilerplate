@@ -78,17 +78,17 @@ export const createCheckoutSession = async (userId, { planId, successUrl, cancel
     where: { id: planId, active: true },
     select: { id: true, stripePriceId: true, name: true },
   })
-  if (!plan) throw httpError('Plan not found', 404)
+  if (!plan) throw httpError('errors.planNotFound', 404)
 
   if (!isStripeConfigured()) {
-    throw httpError('Stripe is not configured — set STRIPE_SECRET_KEY', 500)
+    throw httpError('errors.stripeNotConfigured', 500)
   }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, stripeCustomerId: true, name: true },
   })
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
   let customerId = user.stripeCustomerId
 
@@ -133,13 +133,13 @@ export const createPortalSession = async (userId, { returnUrl }) => {
     where: { id: userId },
     select: { stripeCustomerId: true },
   })
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
   if (!user.stripeCustomerId) {
-    throw httpError('No billing account found — subscribe to a plan first', 400)
+    throw httpError('errors.noBillingAccount', 400)
   }
 
   if (!isStripeConfigured()) {
-    throw httpError('Stripe is not configured — set STRIPE_SECRET_KEY', 500)
+    throw httpError('errors.stripeNotConfigured', 500)
   }
 
   const session = await stripe.billingPortal.sessions.create({
@@ -155,10 +155,10 @@ export const cancelSubscription = async (userId) => {
     where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
     orderBy: { createdAt: 'desc' },
   })
-  if (!subscription) throw httpError('No active subscription found', 404)
+  if (!subscription) throw httpError('errors.noActiveSubscription', 404)
 
   if (!isStripeConfigured()) {
-    throw httpError('Stripe is not configured — set STRIPE_SECRET_KEY', 500)
+    throw httpError('errors.stripeNotConfigured', 500)
   }
 
   await stripe.subscriptions.cancel(subscription.stripeSubscriptionId)
@@ -174,23 +174,23 @@ export const cancelSubscription = async (userId) => {
 
 export const handleWebhook = async (rawBody, signature) => {
   if (!signature) {
-    throw httpError('Missing Stripe signature header', 400)
+    throw httpError('errors.missingStripeSignature', 400)
   }
 
   if (!isStripeConfigured()) {
-    throw httpError('Stripe is not configured', 500)
+    throw httpError('errors.stripeNotConfiguredShort', 500)
   }
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   if (!webhookSecret) {
-    throw httpError('STRIPE_WEBHOOK_SECRET is not configured', 500)
+    throw httpError('errors.stripeWebhookSecretNotConfigured', 500)
   }
 
   let event
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
   } catch (err) {
-    throw httpError(`Webhook signature verification failed: ${err.message}`, 400)
+    throw httpError('errors.webhookSignatureFailed', 400, { message: err.message })
   }
 
   switch (event.type) {

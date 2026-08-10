@@ -7,6 +7,7 @@ import { createApiKey } from '../src/modules/apikey/apikey.service.js'
 import { authenticateApiKey, requireScope } from '../src/middleware/apiKey.middleware.js'
 import { requireSubscription, requirePlan } from '../src/middleware/subscription.middleware.js'
 import { requireFeatureFlag } from '../src/middleware/featureflag.middleware.js'
+import { i18nMiddleware } from '../src/middleware/i18n.middleware.js'
 
 const RUN_ID = Date.now()
 const emailFor = (label) => `mw-${label}-${RUN_ID}@example.com`
@@ -81,6 +82,7 @@ afterAll(async () => {
 const buildApp = (...middleware) => {
   const testApp = express()
   testApp.use(express.json())
+  testApp.use(i18nMiddleware)
   testApp.get('/test', ...middleware, (req, res) => {
     res.json({
       success: true,

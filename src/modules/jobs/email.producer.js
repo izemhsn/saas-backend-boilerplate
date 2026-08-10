@@ -1,5 +1,6 @@
 import { getEmailQueue } from './queues.js'
 import logger from '../../utils/logger.js'
+import { DEFAULT_LOCALE } from '../../i18n/index.js'
 
 const isTest = process.env.NODE_ENV === 'test'
 const isQueueDisabled = process.env.JOB_QUEUE_DISABLED === 'true'
@@ -16,11 +17,17 @@ const enqueueEmail = async (jobName, data) => {
   return { id: job.id }
 }
 
-export const queueVerificationEmail = ({ to, token, name }) =>
-  enqueueEmail('sendVerificationEmail', { to, token, name })
+export const queueVerificationEmail = ({ to, token, name, locale = DEFAULT_LOCALE }) =>
+  enqueueEmail('sendVerificationEmail', { to, token, name, locale })
 
-export const queuePasswordResetEmail = ({ to, token, name }) =>
-  enqueueEmail('sendPasswordResetEmail', { to, token, name })
+export const queuePasswordResetEmail = ({ to, token, name, locale = DEFAULT_LOCALE }) =>
+  enqueueEmail('sendPasswordResetEmail', { to, token, name, locale })
 
-export const queueOrgInvitationEmail = ({ to, orgName, inviterName, role, token }) =>
-  enqueueEmail('sendOrgInvitationEmail', { to, orgName, inviterName, role, token })
+export const queueOrgInvitationEmail = ({
+  to,
+  orgName,
+  inviterName,
+  role,
+  token,
+  locale = DEFAULT_LOCALE,
+}) => enqueueEmail('sendOrgInvitationEmail', { to, orgName, inviterName, role, token, locale })

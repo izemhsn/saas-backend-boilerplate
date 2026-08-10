@@ -17,7 +17,7 @@ export const requireFeatureFlag = (key) => async (req, res, next) => {
     if (!result.enabled) {
       return res.status(403).json({
         success: false,
-        message: `Feature "${key}" is not enabled`,
+        message: req.t('errors.featureNotEnabled', { key }),
       })
     }
 

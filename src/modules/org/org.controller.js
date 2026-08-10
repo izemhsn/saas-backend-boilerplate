@@ -1,5 +1,6 @@
 import * as orgService from './org.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const createOrganization = async (req, res, next) => {
   try {
@@ -10,7 +11,7 @@ export const createOrganization = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.status(201).json({ success: true, data })
+    res.status(201).json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -19,7 +20,7 @@ export const createOrganization = async (req, res, next) => {
 export const listOrganizations = async (req, res, next) => {
   try {
     const data = await orgService.listOrganizations(req.user.id, req.validated?.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -28,7 +29,7 @@ export const listOrganizations = async (req, res, next) => {
 export const getOrganization = async (req, res, next) => {
   try {
     const data = await orgService.getOrganization(req.tenant.id)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -43,7 +44,7 @@ export const updateOrganization = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -58,7 +59,7 @@ export const deleteOrganization = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -73,7 +74,7 @@ export const restoreOrganization = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -82,7 +83,7 @@ export const restoreOrganization = async (req, res, next) => {
 export const listMembers = async (req, res, next) => {
   try {
     const data = await orgService.listMembers(req.tenant.id, req.validated?.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -103,7 +104,7 @@ export const updateMemberRole = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -119,7 +120,7 @@ export const removeMember = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

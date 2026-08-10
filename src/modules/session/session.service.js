@@ -38,8 +38,8 @@ export const revokeSession = async (userId, sessionId) => {
     where: { id: sessionId, userId },
     select: { id: true, revoked: true },
   })
-  if (!session) throw httpError('Session not found', 404)
-  if (session.revoked) throw httpError('Session already revoked', 400)
+  if (!session) throw httpError('errors.sessionNotFound', 404)
+  if (session.revoked) throw httpError('errors.sessionAlreadyRevoked', 400)
 
   const revoked = await prisma.refreshToken.update({
     where: { id: sessionId },

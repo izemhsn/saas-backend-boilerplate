@@ -1,6 +1,7 @@
 import * as invitationService from './invitation.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
 import { queueOrgInvitationEmail } from '../jobs/email.producer.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const createInvitation = async (req, res, next) => {
   try {
@@ -24,6 +25,7 @@ export const createInvitation = async (req, res, next) => {
       inviterName: req.user.name ?? req.user.email,
       role: invitation.role,
       token,
+      locale: req.lang,
     })
 
     res.status(201).json({ success: true, data: { invitation } })
@@ -35,7 +37,7 @@ export const createInvitation = async (req, res, next) => {
 export const listInvitations = async (req, res, next) => {
   try {
     const data = await invitationService.listInvitations(req.tenant.id, req.validated?.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -54,7 +56,7 @@ export const cancelInvitation = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -63,7 +65,7 @@ export const cancelInvitation = async (req, res, next) => {
 export const listMyInvitations = async (req, res, next) => {
   try {
     const data = await invitationService.listMyInvitations(req.user.id, req.validated?.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -79,7 +81,7 @@ export const acceptInvitation = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -94,7 +96,7 @@ export const declineInvitation = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

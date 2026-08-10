@@ -7,14 +7,16 @@ export const authenticateApiKey = async (req, res, next) => {
   const rawKey = req.headers['x-api-key']
 
   if (!rawKey) {
-    return res.status(401).json({ success: false, message: 'No API key provided' })
+    return res.status(401).json({ success: false, message: req.t('errors.noApiKeyProvided') })
   }
 
   try {
     const result = await verifyApiKey(rawKey)
 
     if (!result) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired API key' })
+      return res
+        .status(401)
+        .json({ success: false, message: req.t('errors.invalidOrExpiredApiKey') })
     }
 
     req.user = {
@@ -39,7 +41,7 @@ export const requireScope =
   (...scopes) =>
   (req, res, next) => {
     if (!req.apiKey) {
-      return res.status(401).json({ success: false, message: 'No API key context' })
+      return res.status(401).json({ success: false, message: req.t('errors.noApiKeyContext') })
     }
 
     const hasScope = scopes.some((scope) => req.apiKey.scopes.includes(scope))
@@ -47,7 +49,7 @@ export const requireScope =
     if (!hasScope) {
       return res.status(403).json({
         success: false,
-        message: `Required scope: ${scopes.join(' or ')}`,
+        message: req.t('errors.requiredScope', { scopes: scopes.join(' or ') }),
       })
     }
 

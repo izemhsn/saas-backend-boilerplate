@@ -10,6 +10,7 @@ import pinoHttp from 'pino-http'
 import logger from './utils/logger.js'
 import { errorHandler } from './middleware/error.middleware.js'
 import { sanitizeRequest } from './middleware/sanitize.middleware.js'
+import { i18nMiddleware } from './middleware/i18n.middleware.js'
 import authRouter from './modules/auth/auth.router.js'
 import orgRouter from './modules/org/org.router.js'
 import adminRouter from './modules/admin/admin.router.js'
@@ -89,6 +90,11 @@ app.use(express.json({ limit: '10kb' })) // Parse JSON request bodies (limit pre
 // $ operator keys, and prototype pollution keys from body/query/params
 app.use(sanitizeRequest)
 
+// i18n — resolve the request locale from Accept-Language (or X-Lang override)
+// and attach req.lang + req.t() so every handler can produce localized messages.
+// Runs after sanitize (which doesn't affect headers) and before routes.
+app.use(i18nMiddleware)
+
 // Rate limiting is disabled under test so the Supertest suite isn't throttled
 const skipInTest = () => process.env.NODE_ENV === 'test'
 
@@ -141,7 +147,7 @@ app.get('/health/ready', healthLimiter, async (req, res) => {
     await prisma.$queryRaw`SELECT 1`
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
   } catch {
-    res.status(503).json({ status: 'error', message: 'Database unavailable' })
+    res.status(503).json({ status: 'error', message: req.t('errors.databaseUnavailable') })
   }
 })
 
@@ -190,7 +196,9 @@ app.use('/api/feature-flags', featureFlagRouter)
 // external tools can fetch the spec without being throttled).
 app.use('/api/docs', docsRouter)
 
-app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }))
+app.use((req, res) =>
+  res.status(404).json({ success: false, message: req.t('errors.routeNotFound') }),
+)
 
 // Sentry error handler — must be before our custom errorHandler
 if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {

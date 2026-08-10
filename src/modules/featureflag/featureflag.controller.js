@@ -1,6 +1,7 @@
 import * as flagService from './featureflag.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
 import { prisma } from '../../config/db.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const createFlag = async (req, res, next) => {
   try {
@@ -11,7 +12,7 @@ export const createFlag = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.status(201).json({ success: true, data })
+    res.status(201).json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -20,7 +21,7 @@ export const createFlag = async (req, res, next) => {
 export const listFlags = async (req, res, next) => {
   try {
     const data = await flagService.listFlags(req.validated?.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -29,7 +30,7 @@ export const listFlags = async (req, res, next) => {
 export const getFlag = async (req, res, next) => {
   try {
     const data = await flagService.getFlag(req.validated.params.flagId)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -45,7 +46,7 @@ export const updateFlag = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -60,7 +61,7 @@ export const deleteFlag = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -80,7 +81,7 @@ export const setOverride = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -99,7 +100,7 @@ export const removeOverride = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -123,7 +124,7 @@ export const evaluateFlag = async (req, res, next) => {
     }
 
     const data = await flagService.evaluateFlag(key, orgId, planName)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

@@ -39,8 +39,8 @@ export const setup = async (userId) => {
     where: { id: userId },
     select: { id: true, email: true, twoFactorEnabled: true },
   })
-  if (!user) throw httpError('User not found', 404)
-  if (user.twoFactorEnabled) throw httpError('Two-factor authentication is already enabled', 400)
+  if (!user) throw httpError('errors.userNotFound', 404)
+  if (user.twoFactorEnabled) throw httpError('errors.twoFactorAlreadyEnabled', 400)
 
   const secret = generateSecret()
   const otpauth = await generateURI({
@@ -65,9 +65,9 @@ export const enable = async (userId, { code }) => {
     where: { id: userId },
     select: { id: true, twoFactorSecret: true, twoFactorEnabled: true },
   })
-  if (!user) throw httpError('User not found', 404)
-  if (user.twoFactorEnabled) throw httpError('Two-factor authentication is already enabled', 400)
-  if (!user.twoFactorSecret) throw httpError('Please set up 2FA first', 400)
+  if (!user) throw httpError('errors.userNotFound', 404)
+  if (user.twoFactorEnabled) throw httpError('errors.twoFactorAlreadyEnabled', 400)
+  if (!user.twoFactorSecret) throw httpError('errors.twoFactorSetupFirst', 400)
 
   let valid = false
   try {
@@ -76,7 +76,7 @@ export const enable = async (userId, { code }) => {
   } catch {
     // Invalid token format
   }
-  if (!valid) throw httpError('Invalid verification code', 400)
+  if (!valid) throw httpError('errors.invalidVerificationCode', 400)
 
   // Generate backup codes (hashed for storage, plaintext returned once)
   const backupCodes = []
@@ -95,7 +95,7 @@ export const enable = async (userId, { code }) => {
     },
   })
 
-  return { message: 'Two-factor authentication enabled', backupCodes }
+  return { messageKey: 'messages.twoFactorEnabled', backupCodes }
 }
 
 export const disable = async (userId, { password }) => {
@@ -103,15 +103,15 @@ export const disable = async (userId, { password }) => {
     where: { id: userId },
     select: { id: true, password: true, twoFactorEnabled: true },
   })
-  if (!user) throw httpError('User not found', 404)
-  if (!user.twoFactorEnabled) throw httpError('Two-factor authentication is not enabled', 400)
+  if (!user) throw httpError('errors.userNotFound', 404)
+  if (!user.twoFactorEnabled) throw httpError('errors.twoFactorNotEnabled', 400)
 
   if (!user.password) {
-    throw httpError('This account has no password set. Please use Google sign-in.', 400)
+    throw httpError('errors.accountNoPassword', 400)
   }
 
   const valid = await comparePassword(password, user.password)
-  if (!valid) throw httpError('Password is incorrect', 401)
+  if (!valid) throw httpError('errors.passwordIncorrect', 401)
 
   await prisma.user.update({
     where: { id: userId },
@@ -122,7 +122,7 @@ export const disable = async (userId, { password }) => {
     },
   })
 
-  return { message: 'Two-factor authentication disabled' }
+  return { messageKey: 'messages.twoFactorDisabled' }
 }
 
 export const createChallenge = async (userId) => {
@@ -156,18 +156,18 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
     },
   })
 
-  if (!stored) throw httpError('Invalid or expired challenge', 401)
-  if (stored.used) throw httpError('Challenge already used', 401)
+  if (!stored) throw httpError('errors.invalidOrExpiredChallenge', 401)
+  if (stored.used) throw httpError('errors.challengeAlreadyUsed', 401)
   if (stored.expiresAt < new Date()) {
     await prisma.twoFactorChallenge.delete({ where: { id: stored.id } })
-    throw httpError('Challenge has expired', 401)
+    throw httpError('errors.challengeExpired', 401)
   }
 
   const { user } = stored
 
-  if (user.banned) throw httpError('Your account has been banned', 403)
+  if (user.banned) throw httpError('errors.accountBanned', 403)
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
-    throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+    throw httpError('errors.accountSuspended', 403, { until: user.suspendedUntil.toISOString() })
   }
 
   // Try TOTP code first, then backup codes.
@@ -198,7 +198,7 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
   }
 
   if (!totpValid && !backupUsed) {
-    throw httpError('Invalid verification code', 401)
+    throw httpError('errors.invalidVerificationCode', 401)
   }
 
   // Mark challenge as used

@@ -28,6 +28,6 @@ export const updatePreferencesSchema = z.object({
         .optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
-      message: 'At least one preference field must be provided',
+      message: 'validation.atLeastOnePreferenceField',
     }),
 })

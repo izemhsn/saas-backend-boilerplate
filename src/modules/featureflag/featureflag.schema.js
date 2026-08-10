@@ -6,13 +6,10 @@ export const createFlagSchema = z.object({
     .object({
       key: z
         .string()
-        .min(2, 'Key must be at least 2 characters')
+        .min(2, 'validation.keyMinLength')
         .max(100)
-        .regex(
-          /^[a-z0-9](?:[a-z0-9_:.-]*[a-z0-9])?$/,
-          'Key must be lowercase alphanumeric with hyphens, dots, colons, or underscores',
-        ),
-      name: z.string().min(2, 'Name must be at least 2 characters').max(200),
+        .regex(/^[a-z0-9](?:[a-z0-9_:.-]*[a-z0-9])?$/, 'validation.keyFormat'),
+      name: z.string().min(2, 'validation.nameMinLength').max(200),
       description: z.string().max(1000).optional(),
       type: z.enum(['BOOLEAN', 'PERCENTAGE', 'PLAN']),
       value: z.any().default({}),
@@ -26,7 +23,7 @@ export const createFlagSchema = z.object({
       ) {
         ctx.addIssue({
           path: ['body', 'value'],
-          message: 'BOOLEAN flags use { enabled: true/false }',
+          message: 'validation.booleanFlagFormat',
         })
       }
       if (data.type === 'PERCENTAGE') {
@@ -34,7 +31,7 @@ export const createFlagSchema = z.object({
         if (pct !== undefined && (typeof pct !== 'number' || pct < 0 || pct > 100)) {
           ctx.addIssue({
             path: ['body', 'value'],
-            message: 'PERCENTAGE flags use { percentage: 0-100 }',
+            message: 'validation.percentageFlagFormat',
           })
         }
       }
@@ -45,7 +42,7 @@ export const createFlagSchema = z.object({
         ) {
           ctx.addIssue({
             path: ['body', 'value'],
-            message: 'PLAN flags use { plans: ["Free", "Pro"] }',
+            message: 'validation.planFlagFormat',
           })
         }
       }
@@ -65,7 +62,7 @@ export const updateFlagSchema = z.object({
       active: z.boolean().optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
-      message: 'At least one field must be provided',
+      message: 'validation.atLeastOneField',
     }),
 })
 
@@ -106,7 +103,7 @@ export const overrideParamSchema = z.object({
 
 export const evaluateFlagSchema = z.object({
   query: z.object({
-    key: z.string().min(1, 'Flag key is required'),
+    key: z.string().min(1, 'validation.flagKeyRequired'),
     orgId: z.string().optional(),
   }),
 })

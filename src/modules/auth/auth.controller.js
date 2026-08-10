@@ -1,19 +1,21 @@
 import * as authService from './auth.service.js'
 import * as twofaService from './twofa.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const register = async (req, res, next) => {
   try {
     const data = await authService.register(req.validated.body, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
+      locale: req.lang,
     })
     auditLog('USER_REGISTER', {
       userId: data.user.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.status(201).json({ success: true, data })
+    res.status(201).json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -32,7 +34,7 @@ export const login = async (req, res, next) => {
         userAgent: req.headers['user-agent'],
       })
     }
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -44,7 +46,7 @@ export const refresh = async (req, res, next) => {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -53,7 +55,7 @@ export const refresh = async (req, res, next) => {
 export const verifyEmail = async (req, res, next) => {
   try {
     const data = await authService.verifyEmail(req.validated.body)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -61,8 +63,8 @@ export const verifyEmail = async (req, res, next) => {
 
 export const resendVerification = async (req, res, next) => {
   try {
-    const data = await authService.resendVerification(req.validated.body)
-    res.json({ success: true, data })
+    const data = await authService.resendVerification(req.validated.body, { locale: req.lang })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -70,8 +72,8 @@ export const resendVerification = async (req, res, next) => {
 
 export const forgotPassword = async (req, res, next) => {
   try {
-    const data = await authService.forgotPassword(req.validated.body)
-    res.json({ success: true, data })
+    const data = await authService.forgotPassword(req.validated.body, { locale: req.lang })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -80,7 +82,7 @@ export const forgotPassword = async (req, res, next) => {
 export const resetPassword = async (req, res, next) => {
   try {
     const data = await authService.resetPassword(req.validated.body)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -94,7 +96,7 @@ export const changePassword = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -102,14 +104,16 @@ export const changePassword = async (req, res, next) => {
 
 export const changeEmail = async (req, res, next) => {
   try {
-    const data = await authService.changeEmail(req.user.id, req.validated.body)
+    const data = await authService.changeEmail(req.user.id, req.validated.body, {
+      locale: req.lang,
+    })
     auditLog('USER_EMAIL_CHANGED', {
       userId: req.user.id,
       metadata: { newEmail: req.validated.body.newEmail },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -124,7 +128,7 @@ export const logout = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data: { message: 'Logged out successfully' } })
+    res.json({ success: true, data: { message: req.t('messages.loggedOutSuccessfully') } })
   } catch (err) {
     next(err)
   }
@@ -142,7 +146,7 @@ export const getMe = async (req, res, next) => {
 export const googleAuthUrl = async (req, res, next) => {
   try {
     const data = authService.getGoogleAuthUrl()
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -160,7 +164,7 @@ export const googleLogin = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -169,7 +173,7 @@ export const googleLogin = async (req, res, next) => {
 export const setupTwoFactor = async (req, res, next) => {
   try {
     const data = await twofaService.setup(req.user.id)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -183,7 +187,7 @@ export const enableTwoFactor = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -197,7 +201,7 @@ export const disableTwoFactor = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -215,7 +219,7 @@ export const verifyTwoFactor = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

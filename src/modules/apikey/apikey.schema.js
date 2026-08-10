@@ -3,7 +3,7 @@ import { listQuerySchema } from '../../utils/query.schema.js'
 
 export const createApiKeySchema = z.object({
   body: z.object({
-    name: z.string().min(1, 'Name is required').max(100),
+    name: z.string().min(1, 'validation.nameRequired').max(100),
     scopes: z.array(z.string()).default([]),
     expiresAt: z.string().datetime().optional().nullable(),
   }),

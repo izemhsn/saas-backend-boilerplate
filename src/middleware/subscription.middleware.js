@@ -5,7 +5,7 @@ import { prisma } from '../config/db.js'
 // Usage: router.get('/projects', authenticate, requireSubscription, ctrl.list)
 export const requireSubscription = async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({ success: false, message: 'No token provided' })
+    return res.status(401).json({ success: false, message: req.t('errors.noTokenProvided') })
   }
 
   try {
@@ -25,7 +25,7 @@ export const requireSubscription = async (req, res, next) => {
     if (!subscription) {
       return res.status(402).json({
         success: false,
-        message: 'Active subscription required',
+        message: req.t('errors.activeSubscriptionRequired'),
       })
     }
 
@@ -43,13 +43,15 @@ export const requirePlan =
   (...planNames) =>
   (req, res, next) => {
     if (!req.subscription) {
-      return res.status(402).json({ success: false, message: 'Active subscription required' })
+      return res
+        .status(402)
+        .json({ success: false, message: req.t('errors.activeSubscriptionRequired') })
     }
 
     if (!planNames.includes(req.subscription.plan.name)) {
       return res.status(403).json({
         success: false,
-        message: `This feature requires one of: ${planNames.join(', ')}`,
+        message: req.t('errors.planRequired', { planNames: planNames.join(', ') }),
       })
     }
 

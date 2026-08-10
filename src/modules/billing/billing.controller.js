@@ -1,10 +1,11 @@
 import * as billingService from './billing.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const listPlans = async (req, res, next) => {
   try {
     const data = await billingService.listPlans(req.validated?.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -13,7 +14,7 @@ export const listPlans = async (req, res, next) => {
 export const getSubscription = async (req, res, next) => {
   try {
     const data = await billingService.getSubscription(req.user.id)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -28,7 +29,7 @@ export const createCheckout = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -42,7 +43,7 @@ export const createPortal = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -56,7 +57,7 @@ export const cancelSubscription = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -66,7 +67,7 @@ export const webhook = async (req, res, next) => {
   try {
     const signature = req.headers['stripe-signature']
     const data = await billingService.handleWebhook(req.body, signature)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

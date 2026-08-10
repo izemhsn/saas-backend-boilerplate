@@ -1,10 +1,11 @@
 import * as adminService from './admin.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
+import { translateResult } from '../../utils/i18nResponse.js'
 
 export const listUsers = async (req, res, next) => {
   try {
     const data = await adminService.listUsers(req.validated.query)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -13,7 +14,7 @@ export const listUsers = async (req, res, next) => {
 export const getUser = async (req, res, next) => {
   try {
     const data = await adminService.getUser(req.validated.params.userId)
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -69,7 +70,7 @@ export const updateUser = async (req, res, next) => {
         userAgent: req.headers['user-agent'],
       })
     }
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -84,7 +85,7 @@ export const deleteUser = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }
@@ -99,7 +100,7 @@ export const restoreUser = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
-    res.json({ success: true, data })
+    res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)
   }

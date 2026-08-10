@@ -76,10 +76,10 @@ export const markAsRead = async (userId, notificationId) => {
     select: { id: true, readAt: true },
   })
 
-  if (!notification) throw httpError('Notification not found', 404)
+  if (!notification) throw httpError('errors.notificationNotFound', 404)
 
   if (notification.readAt) {
-    return { message: 'Notification already marked as read' }
+    return { messageKey: 'messages.notificationAlreadyRead' }
   }
 
   await prisma.notification.update({
@@ -87,7 +87,7 @@ export const markAsRead = async (userId, notificationId) => {
     data: { readAt: new Date() },
   })
 
-  return { message: 'Notification marked as read' }
+  return { messageKey: 'messages.notificationMarkedAsRead' }
 }
 
 export const markAllAsRead = async (userId) => {
@@ -96,7 +96,7 @@ export const markAllAsRead = async (userId) => {
     data: { readAt: new Date() },
   })
 
-  return { message: `${result.count} notification(s) marked as read` }
+  return { messageKey: 'messages.notificationsMarkedAsRead', params: { count: result.count } }
 }
 
 export const deleteNotification = async (userId, notificationId) => {
@@ -105,11 +105,11 @@ export const deleteNotification = async (userId, notificationId) => {
     select: { id: true },
   })
 
-  if (!notification) throw httpError('Notification not found', 404)
+  if (!notification) throw httpError('errors.notificationNotFound', 404)
 
   await prisma.notification.delete({ where: { id: notificationId } })
 
-  return { message: 'Notification deleted' }
+  return { messageKey: 'messages.notificationDeleted' }
 }
 
 // ── Preferences ─────────────────────────────────────────────────────
