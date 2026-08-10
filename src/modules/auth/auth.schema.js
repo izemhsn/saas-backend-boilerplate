@@ -2,62 +2,62 @@ import { z } from 'zod'
 
 export const registerSchema = z.object({
   body: z.object({
-    name: z.string().min(2, 'Name must be at least 2 characters'),
-    email: z.string().email('Invalid email address'),
+    name: z.string().min(2, 'validation.nameMinLength'),
+    email: z.string().email('validation.invalidEmail'),
     password: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter')
-      .regex(/[0-9]/, 'Must contain a number'),
+      .min(8, 'validation.passwordMinLength')
+      .regex(/[A-Z]/, 'validation.passwordUppercase')
+      .regex(/[0-9]/, 'validation.passwordNumber'),
   }),
 })
 
 export const loginSchema = z.object({
   body: z.object({
-    email: z.string().email('Invalid email address'),
-    password: z.string().min(1, 'Password is required'),
+    email: z.string().email('validation.invalidEmail'),
+    password: z.string().min(1, 'validation.passwordRequired'),
   }),
 })
 
 export const refreshSchema = z.object({
   body: z.object({
-    refreshToken: z.string().min(1, 'Refresh token is required'),
+    refreshToken: z.string().min(1, 'validation.refreshTokenRequired'),
   }),
 })
 
 export const verifyEmailSchema = z.object({
   body: z.object({
-    token: z.string().min(1, 'Verification token is required'),
+    token: z.string().min(1, 'validation.verificationTokenRequired'),
   }),
 })
 
 export const changePasswordSchema = z.object({
   body: z.object({
-    currentPassword: z.string().min(1, 'Current password is required'),
+    currentPassword: z.string().min(1, 'validation.currentPasswordRequired'),
     newPassword: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter')
-      .regex(/[0-9]/, 'Must contain a number'),
+      .min(8, 'validation.passwordMinLength')
+      .regex(/[A-Z]/, 'validation.passwordUppercase')
+      .regex(/[0-9]/, 'validation.passwordNumber'),
   }),
 })
 
 export const changeEmailSchema = z.object({
   body: z.object({
-    newEmail: z.string().email('Invalid email address'),
-    password: z.string().min(1, 'Password is required to confirm'),
+    newEmail: z.string().email('validation.invalidEmail'),
+    password: z.string().min(1, 'validation.passwordRequiredConfirm'),
   }),
 })
 
 export const resendVerificationSchema = z.object({
   body: z.object({
-    email: z.string().email('Invalid email address'),
+    email: z.string().email('validation.invalidEmail'),
   }),
 })
 
 export const forgotPasswordSchema = z.object({
   body: z.object({
-    email: z.string().email('Invalid email address'),
+    email: z.string().email('validation.invalidEmail'),
   }),
 })
 
@@ -71,17 +71,17 @@ export const logoutSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   body: z.object({
-    token: z.string().min(1, 'Reset token is required'),
+    token: z.string().min(1, 'validation.resetTokenRequired'),
     newPassword: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter')
-      .regex(/[0-9]/, 'Must contain a number'),
+      .min(8, 'validation.passwordMinLength')
+      .regex(/[A-Z]/, 'validation.passwordUppercase')
+      .regex(/[0-9]/, 'validation.passwordNumber'),
   }),
 })
 
 export const googleLoginSchema = z.object({
   body: z.object({
-    code: z.string().min(1, 'Authorization code is required'),
+    code: z.string().min(1, 'validation.authorizationCodeRequired'),
   }),
 })

@@ -231,3 +231,33 @@ The `deploy` job is a placeholder — uncomment and adapt it for your hosting pl
 ### Required secrets
 
 The workflows use the built-in `GITHUB_TOKEN` (no extra secrets needed for GHCR). For the deploy step, add platform-specific secrets (e.g. `FLY_API_TOKEN`, `KUBE_CONFIG`) via **Settings → Secrets and variables → Actions**.
+
+## Internationalization (i18n)
+
+All user-facing strings (API error messages, success messages, Zod validation errors, and email templates) are localized via the i18n system in `src/i18n/`.
+
+### Supported locales
+
+- **en** (English) — default/fallback
+- **fr** (French)
+
+### How locale is resolved
+
+1. **`X-Lang` header** (e.g. `X-Lang: fr`) — explicit override, highest priority
+2. **`Accept-Language` header** — parsed per RFC 4647 (e.g. `fr-FR,fr;q=0.9,en;q=0.8` → `fr`)
+3. **Default** — English (`en`) if no supported locale matches
+
+### Adding a new language
+
+1. Create `src/i18n/locales/<code>.json` (copy `en.json` and translate the values)
+2. Add the locale code to `SUPPORTED_LOCALES` in `src/i18n/index.js`
+3. Add the locale code to `DEFAULT_LOCALE` if you want to change the fallback
+
+### Architecture
+
+- **`src/i18n/index.js`** — `t(key, locale, params)` translate function with `{placeholder}` interpolation, `resolveLocale(acceptLanguage)` parser, `SUPPORTED_LOCALES` + `DEFAULT_LOCALE` exports
+- **`src/middleware/i18n.middleware.js`** — attaches `req.lang` (resolved locale) and `req.t(key, params)` (bound translate) to every request
+- **`src/utils/httpError.js`** — `httpError(key, statusCode, params)` stores the i18n key + params on the error; the error middleware translates at response time using `req.lang`
+- **`src/utils/i18nResponse.js`** — `translateResult(req, data)` helper for controllers to translate service `messageKey` returns into localized `message` fields
+- **`src/middleware/validate.middleware.js`** — translates Zod custom messages that are i18n keys (dot-notation strings)
+- **`src/modules/shared/email.service.js`** — all email templates accept a `locale` parameter; subjects, headings, body text, and footers are pulled from the locale files

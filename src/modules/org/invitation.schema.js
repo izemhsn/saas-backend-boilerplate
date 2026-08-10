@@ -6,7 +6,7 @@ export const createInvitationSchema = z.object({
     orgId: z.string().min(1),
   }),
   body: z.object({
-    email: z.string().email('Valid email is required'),
+    email: z.string().email('validation.validEmail'),
     role: z.enum(['ADMIN', 'MEMBER']).default('MEMBER'),
   }),
 })
@@ -31,13 +31,13 @@ export const cancelInvitationSchema = z.object({
 
 export const acceptInvitationSchema = z.object({
   body: z.object({
-    token: z.string().min(1, 'Token is required'),
+    token: z.string().min(1, 'validation.tokenRequired'),
   }),
 })
 
 export const declineInvitationSchema = z.object({
   body: z.object({
-    token: z.string().min(1, 'Token is required'),
+    token: z.string().min(1, 'validation.tokenRequired'),
   }),
 })
 

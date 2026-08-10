@@ -32,7 +32,7 @@ const invitationSelect = {
 export const createInvitation = async (orgId, inviterId, { email, role }) => {
   const inviteeEmail = normalizeEmail(email)
 
-  if (role === 'OWNER') throw httpError('Cannot invite someone as OWNER', 400)
+  if (role === 'OWNER') throw httpError('errors.cannotInviteAsOwner', 400)
 
   // Check if user is already a member
   const existingMember = await prisma.user.findUnique({
@@ -47,7 +47,7 @@ export const createInvitation = async (orgId, inviterId, { email, role }) => {
   })
 
   if (existingMember?.memberships.length) {
-    throw httpError('User is already a member of this organization', 409)
+    throw httpError('errors.userAlreadyMember', 409)
   }
 
   // Check for existing pending invitation
@@ -61,7 +61,7 @@ export const createInvitation = async (orgId, inviterId, { email, role }) => {
   })
 
   if (existingInvitation) {
-    throw httpError('A pending invitation already exists for this email', 409)
+    throw httpError('errors.pendingInvitationExists', 409)
   }
 
   const token = randomBytes(32).toString('hex')
@@ -112,7 +112,7 @@ export const listMyInvitations = async (userId, query = {}) => {
     where: { id: userId },
     select: { email: true },
   })
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
   const where = {
     inviteeEmail: user.email,
@@ -152,14 +152,14 @@ export const acceptInvitation = async (userId, token) => {
     },
   })
 
-  if (!invitation) throw httpError('Invitation not found', 404)
-  if (invitation.status !== 'PENDING') throw httpError('Invitation is no longer pending', 400)
+  if (!invitation) throw httpError('errors.invitationNotFound', 404)
+  if (invitation.status !== 'PENDING') throw httpError('errors.invitationNotPending', 400)
   if (invitation.expiresAt < new Date()) {
     await prisma.organizationInvitation.update({
       where: { id: invitation.id },
       data: { status: 'EXPIRED' },
     })
-    throw httpError('Invitation has expired', 400)
+    throw httpError('errors.invitationExpired', 400)
   }
 
   const user = await prisma.user.findUnique({
@@ -168,7 +168,7 @@ export const acceptInvitation = async (userId, token) => {
   })
 
   if (!user || user.email !== invitation.inviteeEmail) {
-    throw httpError('This invitation is not for you', 403)
+    throw httpError('errors.invitationNotForYou', 403)
   }
 
   // Check if already a member (edge case: joined via another path)
@@ -184,7 +184,7 @@ export const acceptInvitation = async (userId, token) => {
       where: { id: invitation.id },
       data: { status: 'ACCEPTED', acceptedAt: new Date(), inviteeId: userId },
     })
-    throw httpError('You are already a member of this organization', 409)
+    throw httpError('errors.alreadyMember', 409)
   }
 
   const result = await prisma.$transaction(async (tx) => {
@@ -218,14 +218,14 @@ export const declineInvitation = async (userId, token) => {
     select: { id: true, inviteeEmail: true, status: true, expiresAt: true },
   })
 
-  if (!invitation) throw httpError('Invitation not found', 404)
-  if (invitation.status !== 'PENDING') throw httpError('Invitation is no longer pending', 400)
+  if (!invitation) throw httpError('errors.invitationNotFound', 404)
+  if (invitation.status !== 'PENDING') throw httpError('errors.invitationNotPending', 400)
   if (invitation.expiresAt < new Date()) {
     await prisma.organizationInvitation.update({
       where: { id: invitation.id },
       data: { status: 'EXPIRED' },
     })
-    throw httpError('Invitation has expired', 400)
+    throw httpError('errors.invitationExpired', 400)
   }
 
   const user = await prisma.user.findUnique({
@@ -234,7 +234,7 @@ export const declineInvitation = async (userId, token) => {
   })
 
   if (!user || user.email !== invitation.inviteeEmail) {
-    throw httpError('This invitation is not for you', 403)
+    throw httpError('errors.invitationNotForYou', 403)
   }
 
   const updated = await prisma.organizationInvitation.update({
@@ -252,8 +252,8 @@ export const cancelInvitation = async (orgId, invitationId) => {
     select: { id: true, status: true },
   })
 
-  if (!invitation) throw httpError('Invitation not found', 404)
-  if (invitation.status !== 'PENDING') throw httpError('Invitation is no longer pending', 400)
+  if (!invitation) throw httpError('errors.invitationNotFound', 404)
+  if (invitation.status !== 'PENDING') throw httpError('errors.invitationNotPending', 400)
 
   const updated = await prisma.organizationInvitation.update({
     where: { id: invitation.id },

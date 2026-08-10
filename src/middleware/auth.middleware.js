@@ -8,7 +8,7 @@ export const authenticate = async (req, res, next) => {
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({
       success: false,
-      message: 'No token provided',
+      message: req.t('errors.noTokenProvided'),
     })
   }
 
@@ -30,21 +30,21 @@ export const authenticate = async (req, res, next) => {
     })
 
     if (!user) {
-      return res.status(401).json({ success: false, message: 'User no longer exists' })
+      return res.status(401).json({ success: false, message: req.t('errors.userNoLongerExists') })
     }
 
     if (decoded.tokenVersion !== user.tokenVersion) {
-      return res.status(401).json({ success: false, message: 'Token has been invalidated' })
+      return res.status(401).json({ success: false, message: req.t('errors.tokenInvalidated') })
     }
 
     if (user.banned) {
-      return res.status(403).json({ success: false, message: 'Your account has been banned' })
+      return res.status(403).json({ success: false, message: req.t('errors.accountBanned') })
     }
 
     if (user.suspendedUntil && user.suspendedUntil > new Date()) {
       return res.status(403).json({
         success: false,
-        message: `Your account is suspended until ${user.suspendedUntil.toISOString()}`,
+        message: req.t('errors.accountSuspended', { until: user.suspendedUntil.toISOString() }),
       })
     }
 
@@ -53,7 +53,7 @@ export const authenticate = async (req, res, next) => {
   } catch {
     res.status(401).json({
       success: false,
-      message: 'Invalid or expired token',
+      message: req.t('errors.invalidOrExpiredToken'),
     })
   }
 }
@@ -63,10 +63,12 @@ export const authorize =
   (...roles) =>
   (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ success: false, message: 'No token provided' })
+      return res.status(401).json({ success: false, message: req.t('errors.noTokenProvided') })
     }
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'Insufficient permissions' })
+      return res
+        .status(403)
+        .json({ success: false, message: req.t('errors.insufficientPermissions') })
     }
     next()
   }
@@ -75,7 +77,7 @@ export const authorize =
 // Usage: router.get('/projects', authenticate, requireVerifiedEmail, ctrl.list)
 export const requireVerifiedEmail = async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({ success: false, message: 'No token provided' })
+    return res.status(401).json({ success: false, message: req.t('errors.noTokenProvided') })
   }
   try {
     const user = await prisma.user.findFirst({
@@ -83,7 +85,7 @@ export const requireVerifiedEmail = async (req, res, next) => {
       select: { emailVerified: true },
     })
     if (!user || !user?.emailVerified) {
-      return res.status(403).json({ success: false, message: 'Email not verified' })
+      return res.status(403).json({ success: false, message: req.t('errors.emailNotVerified') })
     }
     next()
   } catch (err) {

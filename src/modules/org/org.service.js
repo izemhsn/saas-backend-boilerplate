@@ -25,7 +25,7 @@ export const createOrganization = async (userId, { name, slug }) => {
     where: { slug, deletedAt: null },
     select: { id: true },
   })
-  if (existing) throw httpError('Slug already taken', 409)
+  if (existing) throw httpError('errors.slugAlreadyTaken', 409)
 
   const organization = await prisma.organization.create({
     data: {
@@ -77,7 +77,7 @@ export const getOrganization = async (orgId) => {
     where: { id: orgId, deletedAt: null },
     select: orgSelect,
   })
-  if (!organization) throw httpError('Organization not found', 404)
+  if (!organization) throw httpError('errors.organizationNotFound', 404)
 
   return { organization }
 }
@@ -88,7 +88,7 @@ export const updateOrganization = async (orgId, { name, slug }) => {
       where: { slug, deletedAt: null },
       select: { id: true },
     })
-    if (existing && existing.id !== orgId) throw httpError('Slug already taken', 409)
+    if (existing && existing.id !== orgId) throw httpError('errors.slugAlreadyTaken', 409)
   }
 
   const data = {}
@@ -106,7 +106,7 @@ export const updateOrganization = async (orgId, { name, slug }) => {
 
 export const deleteOrganization = async (orgId) => {
   await prisma.organization.update({ where: { id: orgId }, data: { deletedAt: new Date() } })
-  return { message: 'Organization deleted successfully' }
+  return { messageKey: 'messages.organizationDeletedSuccessfully' }
 }
 
 export const restoreOrganization = async (orgId) => {
@@ -114,7 +114,7 @@ export const restoreOrganization = async (orgId) => {
     where: { id: orgId, deletedAt: { not: null } },
     select: { id: true },
   })
-  if (!org) throw httpError('Deleted organization not found', 404)
+  if (!org) throw httpError('errors.deletedOrganizationNotFound', 404)
 
   await prisma.organization.update({
     where: { id: orgId },
@@ -122,7 +122,7 @@ export const restoreOrganization = async (orgId) => {
     select: orgSelect,
   })
 
-  return { message: 'Organization restored successfully' }
+  return { messageKey: 'messages.organizationRestoredSuccessfully' }
 }
 
 export const listMembers = async (orgId, query = {}) => {
@@ -154,10 +154,10 @@ export const updateMemberRole = async (orgId, targetUserId, role) => {
     where: { organizationId_userId: { organizationId: orgId, userId: targetUserId } },
     select: { id: true, role: true },
   })
-  if (!membership) throw httpError('Member not found', 404)
+  if (!membership) throw httpError('errors.memberNotFound', 404)
 
   if (membership.role === 'OWNER') {
-    throw httpError('Cannot change the role of the organization owner', 400)
+    throw httpError('errors.cannotChangeOwnerRole', 400)
   }
 
   const updated = await prisma.organizationMember.update({
@@ -174,12 +174,12 @@ export const removeMember = async (orgId, targetUserId) => {
     where: { organizationId_userId: { organizationId: orgId, userId: targetUserId } },
     select: { id: true, role: true },
   })
-  if (!membership) throw httpError('Member not found', 404)
+  if (!membership) throw httpError('errors.memberNotFound', 404)
 
   if (membership.role === 'OWNER') {
-    throw httpError('Cannot remove the organization owner', 400)
+    throw httpError('errors.cannotRemoveOwner', 400)
   }
 
   await prisma.organizationMember.delete({ where: { id: membership.id } })
-  return { message: 'Member removed successfully' }
+  return { messageKey: 'messages.memberRemovedSuccessfully' }
 }

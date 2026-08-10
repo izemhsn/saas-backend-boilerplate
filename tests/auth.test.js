@@ -3,6 +3,10 @@ import request from 'supertest'
 import app from '../src/app.js'
 import { prisma } from '../src/config/db.js'
 import { authorize, requireVerifiedEmail } from '../src/middleware/auth.middleware.js'
+import { t as translate } from '../src/i18n/index.js'
+
+// Mock req.t for unit tests that call middleware directly (no i18n middleware)
+const mockReqT = (req) => ({ ...req, lang: 'en', t: (key, params) => translate(key, 'en', params) })
 
 // Unique suffix per run so repeated runs against a persistent DB never collide
 const RUN_ID = Date.now()
@@ -522,7 +526,7 @@ describe('authorize() middleware', () => {
   })
 
   it('returns 403 when the user role is not allowed', () => {
-    const req = { user: { id: '1', role: 'USER' } }
+    const req = mockReqT({ user: { id: '1', role: 'USER' } })
     const res = buildRes()
 
     authorize('ADMIN')(req, res, () => {})
@@ -531,7 +535,7 @@ describe('authorize() middleware', () => {
   })
 
   it('returns 401 when there is no authenticated user', () => {
-    const req = {}
+    const req = mockReqT({})
     const res = buildRes()
 
     authorize('ADMIN')(req, res, () => {})
@@ -555,7 +559,7 @@ describe('requireVerifiedEmail() middleware', () => {
   }
 
   it('returns 401 when there is no authenticated user', async () => {
-    const req = {}
+    const req = mockReqT({})
     const res = buildRes()
 
     await requireVerifiedEmail(req, res, () => {})
@@ -565,7 +569,7 @@ describe('requireVerifiedEmail() middleware', () => {
 
   it('returns 403 when the user email is not verified', async () => {
     const { res: registerRes } = await registerUser('require-verified')
-    const req = { user: { id: registerRes.body.data.user.id } }
+    const req = mockReqT({ user: { id: registerRes.body.data.user.id } })
     const res = buildRes()
 
     await requireVerifiedEmail(req, res, () => {})
@@ -580,7 +584,7 @@ describe('requireVerifiedEmail() middleware', () => {
       .post('/api/auth/verify-email')
       .send({ token: registerRes.body.data.emailVerificationToken })
 
-    const req = { user: { id: registerRes.body.data.user.id } }
+    const req = mockReqT({ user: { id: registerRes.body.data.user.id } })
     const res = buildRes()
     let called = false
 

@@ -3,15 +3,15 @@ import { listQuerySchema } from '../../utils/query.schema.js'
 
 export const checkoutSchema = z.object({
   body: z.object({
-    planId: z.string().min(1, 'Plan ID is required'),
-    successUrl: z.string().url('Must be a valid URL'),
-    cancelUrl: z.string().url('Must be a valid URL'),
+    planId: z.string().min(1, 'validation.planIdRequired'),
+    successUrl: z.string().url('validation.validUrl'),
+    cancelUrl: z.string().url('validation.validUrl'),
   }),
 })
 
 export const portalSchema = z.object({
   body: z.object({
-    returnUrl: z.string().url('Must be a valid URL'),
+    returnUrl: z.string().url('validation.validUrl'),
   }),
 })
 

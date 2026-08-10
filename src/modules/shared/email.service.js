@@ -1,30 +1,45 @@
 import { Resend } from 'resend'
 import logger from '../../utils/logger.js'
+import { t as translate, DEFAULT_LOCALE } from '../../i18n/index.js'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 const FROM = process.env.FROM_EMAIL ?? 'noreply@example.com'
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
 
-export const sendVerificationEmail = async ({ to, token, name }) => {
+// Build the HTML email body from locale-specific template strings.
+// All text is pulled from the i18n locale files so emails are sent in the
+// user's preferred language.
+const buildEmailHtml = (strings, { url, button }) => `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2>${strings.heading}</h2>
+      <p>${strings.greeting},</p>
+      <p>${strings.body}</p>
+      <a href="${url}"
+         style="display: inline-block; background: #4f46e5; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
+        ${button}
+      </a>
+      <p>${strings.copyLink}</p>
+      <p><a href="${url}">${url}</a></p>
+      <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
+        ${strings.footer}
+      </p>
+    </div>
+  `
+
+export const sendVerificationEmail = async ({ to, token, name, locale = DEFAULT_LOCALE }) => {
   const verifyUrl = `${APP_URL}/verify-email?token=${token}`
+  const strings = {
+    heading: translate('emails.verification.heading', locale),
+    greeting: translate('emails.verification.greeting', locale, { name: name ? ` ${name}` : '' }),
+    body: translate('emails.verification.body', locale),
+    copyLink: translate('emails.verification.copyLink', locale),
+    footer: translate('emails.verification.footer', locale),
+  }
+  const button = translate('emails.verification.button', locale)
+  const subject = translate('emails.verification.subject', locale)
 
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2>Verify your email address</h2>
-      <p>Hi${name ? ` ${name}` : ''},</p>
-      <p>Please confirm your email address by clicking the button below:</p>
-      <a href="${verifyUrl}"
-         style="display: inline-block; background: #4f46e5; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
-        Verify Email
-      </a>
-      <p>Or copy this link into your browser:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
-        This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.
-      </p>
-    </div>
-  `
+  const html = buildEmailHtml(strings, { url: verifyUrl, button })
 
   if (!resend) {
     logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
@@ -34,32 +49,29 @@ export const sendVerificationEmail = async ({ to, token, name }) => {
   const { error } = await resend.emails.send({
     from: FROM,
     to,
-    subject: 'Verify your email address',
+    subject,
     html,
   })
 
-  if (error) throw new Error(`Failed to send verification email: ${error.message}`)
+  if (error)
+    throw new Error(
+      translate('errors.failedToSendVerificationEmail', locale, { message: error.message }),
+    )
 }
 
-export const sendPasswordResetEmail = async ({ to, token, name }) => {
+export const sendPasswordResetEmail = async ({ to, token, name, locale = DEFAULT_LOCALE }) => {
   const resetUrl = `${APP_URL}/reset-password?token=${token}`
+  const strings = {
+    heading: translate('emails.passwordReset.heading', locale),
+    greeting: translate('emails.passwordReset.greeting', locale, { name: name ? ` ${name}` : '' }),
+    body: translate('emails.passwordReset.body', locale),
+    copyLink: translate('emails.passwordReset.copyLink', locale),
+    footer: translate('emails.passwordReset.footer', locale),
+  }
+  const button = translate('emails.passwordReset.button', locale)
+  const subject = translate('emails.passwordReset.subject', locale)
 
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2>Reset your password</h2>
-      <p>Hi${name ? ` ${name}` : ''},</p>
-      <p>We received a request to reset your password. Click the button below to choose a new one:</p>
-      <a href="${resetUrl}"
-         style="display: inline-block; background: #4f46e5; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
-        Reset Password
-      </a>
-      <p>Or copy this link into your browser:</p>
-      <p><a href="${resetUrl}">${resetUrl}</a></p>
-      <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
-        This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.
-      </p>
-    </div>
-  `
+  const html = buildEmailHtml(strings, { url: resetUrl, button })
 
   if (!resend) {
     logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
@@ -69,31 +81,36 @@ export const sendPasswordResetEmail = async ({ to, token, name }) => {
   const { error } = await resend.emails.send({
     from: FROM,
     to,
-    subject: 'Reset your password',
+    subject,
     html,
   })
 
-  if (error) throw new Error(`Failed to send password reset email: ${error.message}`)
+  if (error)
+    throw new Error(
+      translate('errors.failedToSendPasswordResetEmail', locale, { message: error.message }),
+    )
 }
 
-export const sendOrgInvitationEmail = async ({ to, orgName, inviterName, role, token }) => {
+export const sendOrgInvitationEmail = async ({
+  to,
+  orgName,
+  inviterName,
+  role,
+  token,
+  locale = DEFAULT_LOCALE,
+}) => {
   const inviteUrl = `${APP_URL}/invitations/accept?token=${token}`
+  const strings = {
+    heading: translate('emails.orgInvitation.heading', locale, { orgName }),
+    greeting: '',
+    body: translate('emails.orgInvitation.body', locale, { inviterName, orgName, role }),
+    copyLink: translate('emails.orgInvitation.copyLink', locale),
+    footer: translate('emails.orgInvitation.footer', locale),
+  }
+  const button = translate('emails.orgInvitation.button', locale)
+  const subject = translate('emails.orgInvitation.subject', locale, { orgName })
 
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2>You're invited to join ${orgName}</h2>
-      <p>${inviterName} has invited you to join <strong>${orgName}</strong> as a <strong>${role}</strong>.</p>
-      <a href="${inviteUrl}"
-         style="display: inline-block; background: #4f46e5; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
-        Accept Invitation
-      </a>
-      <p>Or copy this link into your browser:</p>
-      <p><a href="${inviteUrl}">${inviteUrl}</a></p>
-      <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
-        This invitation expires in 7 days. If you weren't expecting this invitation, you can safely ignore this email.
-      </p>
-    </div>
-  `
+  const html = buildEmailHtml(strings, { url: inviteUrl, button })
 
   if (!resend) {
     logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
@@ -103,9 +120,12 @@ export const sendOrgInvitationEmail = async ({ to, orgName, inviterName, role, t
   const { error } = await resend.emails.send({
     from: FROM,
     to,
-    subject: `You're invited to join ${orgName}`,
+    subject,
     html,
   })
 
-  if (error) throw new Error(`Failed to send org invitation email: ${error.message}`)
+  if (error)
+    throw new Error(
+      translate('errors.failedToSendOrgInvitationEmail', locale, { message: error.message }),
+    )
 }

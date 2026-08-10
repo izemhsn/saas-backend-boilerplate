@@ -53,13 +53,16 @@ const revokeAllRefreshTokens = async (userId) => {
   })
 }
 
-export const register = async ({ name, email, password }, { userAgent, ipAddress } = {}) => {
+export const register = async (
+  { name, email, password },
+  { userAgent, ipAddress, locale } = {},
+) => {
   const normalizedEmail = normalizeEmail(email)
   const existing = await prisma.user.findFirst({
     where: { email: normalizedEmail, deletedAt: null },
     select: { id: true },
   })
-  if (existing) throw httpError('Email already registered', 409)
+  if (existing) throw httpError('errors.emailAlreadyRegistered', 409)
 
   const emailVerificationToken = randomBytes(32).toString('hex')
 
@@ -80,6 +83,7 @@ export const register = async ({ name, email, password }, { userAgent, ipAddress
     to: normalizedEmail,
     token: emailVerificationToken,
     name: name.trim(),
+    locale,
   })
 
   return {
@@ -114,10 +118,7 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
 
   // Check if account is locked (before password verification)
   if (user?.lockedUntil && user.lockedUntil > new Date()) {
-    throw httpError(
-      'Account temporarily locked due to too many failed attempts. Try again later.',
-      423,
-    )
+    throw httpError('errors.accountLocked', 423)
   }
 
   // Reset lock if it has expired
@@ -133,7 +134,7 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
   // If the user has no password (OAuth-only account), reject with a helpful message
   if (user && !user.password) {
     await dummyCompare()
-    throw httpError('This account was created with Google. Please use Google sign-in.', 400)
+    throw httpError('errors.accountCreatedWithGoogle', 400)
   }
 
   // Always run a bcrypt compare (dummy hash if the user is missing) so response
@@ -154,15 +155,15 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
         data: updateData,
       })
     }
-    throw httpError('Invalid credentials', 401)
+    throw httpError('errors.invalidCredentials', 401)
   }
 
   if (user.banned) {
-    throw httpError('Your account has been banned', 403)
+    throw httpError('errors.accountBanned', 403)
   }
 
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
-    throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+    throw httpError('errors.accountSuspended', 403, { until: user.suspendedUntil.toISOString() })
   }
 
   // If 2FA is enabled, return a challenge token instead of issuing JWTs.
@@ -195,7 +196,7 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
   try {
     verifyRefreshToken(refreshToken)
   } catch {
-    throw httpError('Invalid or expired refresh token', 401)
+    throw httpError('errors.invalidOrExpiredRefreshToken', 401)
   }
 
   const storedToken = await prisma.refreshToken.findUnique({
@@ -221,19 +222,19 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
       where: { userId: storedToken.userId },
       data: { revoked: true },
     })
-    throw httpError('Invalid refresh token', 401)
+    throw httpError('errors.invalidRefreshToken', 401)
   }
 
-  if (!storedToken) throw httpError('Invalid refresh token', 401)
+  if (!storedToken) throw httpError('errors.invalidRefreshToken', 401)
 
   const user = storedToken.user
 
   if (user.banned) {
-    throw httpError('Your account has been banned', 403)
+    throw httpError('errors.accountBanned', 403)
   }
 
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
-    throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+    throw httpError('errors.accountSuspended', 403, { until: user.suspendedUntil.toISOString() })
   }
 
   // Rotate: revoke the old token and issue a new one
@@ -260,9 +261,9 @@ export const verifyEmail = async ({ token }) => {
     where: { emailVerificationToken: hashToken(token) },
     select: { id: true, emailVerified: true, pendingEmail: true, emailVerificationExpires: true },
   })
-  if (!user) throw httpError('Invalid or expired verification token', 400)
+  if (!user) throw httpError('errors.invalidOrExpiredVerificationToken', 400)
   if (user.emailVerified && !user.pendingEmail) {
-    return { message: 'Email already verified' }
+    return { messageKey: 'messages.emailAlreadyVerified' }
   }
   if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
     // Clear the stale token so it can't be probed again
@@ -270,7 +271,7 @@ export const verifyEmail = async ({ token }) => {
       where: { id: user.id },
       data: { emailVerificationToken: null, emailVerificationExpires: null },
     })
-    throw httpError('Verification token has expired. Please request a new one.', 400)
+    throw httpError('errors.verificationTokenExpired', 400)
   }
 
   const updateData = {
@@ -291,17 +292,14 @@ export const verifyEmail = async ({ token }) => {
     })
   } catch (err) {
     if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw httpError(
-        'This email address is already in use. Please request a new change email.',
-        409,
-      )
+      throw httpError('errors.emailAlreadyInUseChangeEmail', 409)
     }
     throw err
   }
-  return { message: 'Email verified successfully' }
+  return { messageKey: 'messages.emailVerifiedSuccessfully' }
 }
 
-export const resendVerification = async ({ email }) => {
+export const resendVerification = async ({ email }, { locale } = {}) => {
   const normalizedEmail = normalizeEmail(email)
   const user = await prisma.user.findFirst({
     where: { email: normalizedEmail, deletedAt: null },
@@ -310,7 +308,7 @@ export const resendVerification = async ({ email }) => {
 
   // Don't reveal whether the account exists or is already verified
   if (!user || user.emailVerified) {
-    return { message: 'If that account needs verification, a new token has been issued.' }
+    return { messageKey: 'messages.verificationEmailSent' }
   }
 
   const emailVerificationToken = randomBytes(32).toString('hex')
@@ -326,17 +324,18 @@ export const resendVerification = async ({ email }) => {
     to: normalizedEmail,
     token: emailVerificationToken,
     name: user.name,
+    locale,
   })
 
   return {
-    message: 'If that account needs verification, a new token has been issued.',
+    messageKey: 'messages.verificationEmailSent',
     ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
 }
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 
-export const forgotPassword = async ({ email }) => {
+export const forgotPassword = async ({ email }, { locale } = {}) => {
   const normalizedEmail = normalizeEmail(email)
   const user = await prisma.user.findFirst({
     where: { email: normalizedEmail, deletedAt: null },
@@ -345,7 +344,7 @@ export const forgotPassword = async ({ email }) => {
 
   // Don't reveal whether the email exists
   if (!user) {
-    return { message: 'If that account exists, a password reset token has been issued.' }
+    return { messageKey: 'messages.passwordResetTokenSent' }
   }
 
   const resetToken = randomBytes(32).toString('hex')
@@ -357,10 +356,10 @@ export const forgotPassword = async ({ email }) => {
     },
   })
 
-  await queuePasswordResetEmail({ to: normalizedEmail, token: resetToken, name: user.name })
+  await queuePasswordResetEmail({ to: normalizedEmail, token: resetToken, name: user.name, locale })
 
   return {
-    message: 'If that account exists, a password reset token has been issued.',
+    messageKey: 'messages.passwordResetTokenSent',
     ...(process.env.NODE_ENV !== 'production' && { resetToken }),
   }
 }
@@ -378,7 +377,7 @@ export const resetPassword = async ({ token, newPassword }) => {
         data: { passwordResetToken: null, passwordResetExpires: null },
       })
     }
-    throw httpError('Invalid or expired reset token', 400)
+    throw httpError('errors.invalidOrExpiredResetToken', 400)
   }
 
   await prisma.user.update({
@@ -392,7 +391,7 @@ export const resetPassword = async ({ token, newPassword }) => {
   })
   await revokeAllRefreshTokens(user.id)
 
-  return { message: 'Password reset successfully. Please log in again.' }
+  return { messageKey: 'messages.passwordResetSuccess' }
 }
 
 export const changePassword = async (userId, { currentPassword, newPassword }) => {
@@ -400,51 +399,49 @@ export const changePassword = async (userId, { currentPassword, newPassword }) =
     where: { id: userId },
     select: { id: true, password: true },
   })
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
-  if (!user.password)
-    throw httpError('This account has no password set. Please use Google sign-in.', 400)
+  if (!user.password) throw httpError('errors.accountNoPassword', 400)
 
   const valid = await comparePassword(currentPassword, user.password)
-  if (!valid) throw httpError('Current password is incorrect', 401)
+  if (!valid) throw httpError('errors.currentPasswordIncorrect', 401)
 
   const samePassword = await comparePassword(newPassword, user.password)
-  if (samePassword) throw httpError('New password must be different from the current password', 400)
+  if (samePassword) throw httpError('errors.newPasswordMustDiffer', 400)
 
   await prisma.user.update({
     where: { id: userId },
     data: { password: await hashPassword(newPassword), tokenVersion: { increment: 1 } },
   })
   await revokeAllRefreshTokens(userId)
-  return { message: 'Password changed successfully. Please log in again.' }
+  return { messageKey: 'messages.passwordChangedSuccess' }
 }
 
-export const changeEmail = async (userId, { newEmail, password }) => {
+export const changeEmail = async (userId, { newEmail, password }, { locale } = {}) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, name: true, password: true },
   })
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
-  if (!user.password)
-    throw httpError('This account has no password set. Please use Google sign-in.', 400)
+  if (!user.password) throw httpError('errors.accountNoPassword', 400)
 
   const valid = await comparePassword(password, user.password)
-  if (!valid) throw httpError('Password is incorrect', 401)
+  if (!valid) throw httpError('errors.passwordIncorrect', 401)
 
   const normalizedNewEmail = normalizeEmail(newEmail)
   const taken = await prisma.user.findFirst({
     where: { email: normalizedNewEmail, deletedAt: null },
     select: { id: true },
   })
-  if (taken) throw httpError('Email already in use', 409)
+  if (taken) throw httpError('errors.emailAlreadyInUse', 409)
 
   // Check if pendingEmail is already claimed by another user
   const pendingTaken = await prisma.user.findFirst({
     where: { pendingEmail: normalizedNewEmail, NOT: { id: userId } },
     select: { id: true },
   })
-  if (pendingTaken) throw httpError('Email already in use', 409)
+  if (pendingTaken) throw httpError('errors.emailAlreadyInUse', 409)
 
   const emailVerificationToken = randomBytes(32).toString('hex')
   await prisma.user.update({
@@ -460,10 +457,10 @@ export const changeEmail = async (userId, { newEmail, password }) => {
     to: normalizedNewEmail,
     token: emailVerificationToken,
     name: user.name,
+    locale,
   })
   return {
-    message:
-      'Verification email sent to your new address. Your email will change after verification.',
+    messageKey: 'messages.verificationEmailSentToNewAddress',
     ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
   }
 }
@@ -479,18 +476,18 @@ export const logout = async (userId, refreshToken) => {
     // Revoke all refresh tokens for this user (logout everywhere)
     await revokeAllRefreshTokens(userId)
   }
-  return { message: 'Logged out successfully' }
+  return { messageKey: 'messages.loggedOutSuccessfully' }
 }
 
 export const getGoogleAuthUrl = () => {
-  if (!isGoogleConfigured()) throw httpError('Google OAuth is not configured', 503)
+  if (!isGoogleConfigured()) throw httpError('errors.googleNotConfigured', 503)
   const url = buildGoogleAuthUrl()
-  if (!url) throw httpError('Google OAuth is not configured', 503)
+  if (!url) throw httpError('errors.googleNotConfigured', 503)
   return { url }
 }
 
 export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
-  if (!isGoogleConfigured()) throw httpError('Google OAuth is not configured', 503)
+  if (!isGoogleConfigured()) throw httpError('errors.googleNotConfigured', 503)
   const client = getGoogleClient()
 
   let ticket
@@ -501,12 +498,12 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
       audience: process.env.GOOGLE_CLIENT_ID,
     })
   } catch {
-    throw httpError('Failed to authenticate with Google', 401)
+    throw httpError('errors.googleAuthFailed', 401)
   }
 
   const payload = ticket.getPayload()
   if (!payload?.sub || !payload?.email) {
-    throw httpError('Google did not return required profile information', 400)
+    throw httpError('errors.googleNoProfileInfo', 400)
   }
 
   const googleId = payload.sub
@@ -533,7 +530,7 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
     })
     if (user) {
       if (user.googleId && user.googleId !== googleId) {
-        throw httpError('This email is already linked to another Google account', 409)
+        throw httpError('errors.emailLinkedToAnotherGoogle', 409)
       }
       user = await prisma.user.update({
         where: { id: user.id },
@@ -557,11 +554,11 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
   }
 
   if (user.banned) {
-    throw httpError('Your account has been banned', 403)
+    throw httpError('errors.accountBanned', 403)
   }
 
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
-    throw httpError(`Your account is suspended until ${user.suspendedUntil.toISOString()}`, 403)
+    throw httpError('errors.accountSuspended', 403, { until: user.suspendedUntil.toISOString() })
   }
 
   const { tokenVersion, ...safeUser } = await prisma.user.update({
@@ -589,7 +586,7 @@ export const getMe = async (userId) => {
     where: { id: userId },
     select: userSelect,
   })
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
   return user
 }

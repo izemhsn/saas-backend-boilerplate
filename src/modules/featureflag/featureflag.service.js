@@ -18,7 +18,7 @@ const flagSelect = {
 
 export const createFlag = async ({ key, name, description, type, value, active }) => {
   const existing = await prisma.featureFlag.findUnique({ where: { key }, select: { id: true } })
-  if (existing) throw httpError('Flag key already exists', 409)
+  if (existing) throw httpError('errors.flagKeyAlreadyExists', 409)
 
   const flag = await prisma.featureFlag.create({
     data: { key, name, description, type, value, active },
@@ -71,13 +71,13 @@ export const getFlag = async (flagId) => {
       },
     },
   })
-  if (!flag) throw httpError('Feature flag not found', 404)
+  if (!flag) throw httpError('errors.featureFlagNotFound', 404)
   return { flag }
 }
 
 export const updateFlag = async (flagId, data) => {
   const flag = await prisma.featureFlag.findUnique({ where: { id: flagId }, select: { id: true } })
-  if (!flag) throw httpError('Feature flag not found', 404)
+  if (!flag) throw httpError('errors.featureFlagNotFound', 404)
 
   const updated = await prisma.featureFlag.update({
     where: { id: flagId },
@@ -90,23 +90,23 @@ export const updateFlag = async (flagId, data) => {
 
 export const deleteFlag = async (flagId) => {
   const flag = await prisma.featureFlag.findUnique({ where: { id: flagId }, select: { id: true } })
-  if (!flag) throw httpError('Feature flag not found', 404)
+  if (!flag) throw httpError('errors.featureFlagNotFound', 404)
 
   await prisma.featureFlag.delete({ where: { id: flagId } })
-  return { message: 'Feature flag deleted successfully' }
+  return { messageKey: 'messages.featureFlagDeletedSuccessfully' }
 }
 
 // ── Organization Overrides ──────────────────────────────────────────
 
 export const setOverride = async (flagId, orgId, { enabled, value }) => {
   const flag = await prisma.featureFlag.findUnique({ where: { id: flagId }, select: { id: true } })
-  if (!flag) throw httpError('Feature flag not found', 404)
+  if (!flag) throw httpError('errors.featureFlagNotFound', 404)
 
   const org = await prisma.organization.findFirst({
     where: { id: orgId, deletedAt: null },
     select: { id: true },
   })
-  if (!org) throw httpError('Organization not found', 404)
+  if (!org) throw httpError('errors.organizationNotFoundForFlag', 404)
 
   const override = await prisma.organizationFeatureFlag.upsert({
     where: { featureFlagId_organizationId: { featureFlagId: flagId, organizationId: orgId } },
@@ -131,10 +131,10 @@ export const removeOverride = async (flagId, orgId) => {
     where: { featureFlagId_organizationId: { featureFlagId: flagId, organizationId: orgId } },
     select: { id: true },
   })
-  if (!override) throw httpError('Override not found', 404)
+  if (!override) throw httpError('errors.overrideNotFound', 404)
 
   await prisma.organizationFeatureFlag.delete({ where: { id: override.id } })
-  return { message: 'Override removed successfully' }
+  return { messageKey: 'messages.overrideRemovedSuccessfully' }
 }
 
 // ── Evaluation ──────────────────────────────────────────────────────

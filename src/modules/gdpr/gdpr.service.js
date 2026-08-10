@@ -23,7 +23,7 @@ export const exportData = async (userId) => {
     },
   })
 
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
   const [
     refreshTokens,
@@ -150,24 +150,21 @@ export const deleteAccount = async (userId, password) => {
     select: { id: true, password: true, role: true, email: true },
   })
 
-  if (!user) throw httpError('User not found', 404)
+  if (!user) throw httpError('errors.userNotFound', 404)
 
   // OAuth-only accounts have no password — they must unlink Google first
   // or use a different deletion path. For now, reject with a helpful message.
   if (!user.password) {
-    throw httpError(
-      'This account has no password set. Please set a password before deleting your account.',
-      400,
-    )
+    throw httpError('errors.noPasswordSet', 400)
   }
 
   const valid = await comparePassword(password, user.password)
-  if (!valid) throw httpError('Password is incorrect', 401)
+  if (!valid) throw httpError('errors.passwordIncorrect', 401)
 
   // Prevent the last admin from deleting their account
   if (user.role === 'ADMIN') {
     const adminCount = await prisma.user.count({ where: { role: 'ADMIN', deletedAt: null } })
-    if (adminCount <= 1) throw httpError('Cannot delete the last admin account', 400)
+    if (adminCount <= 1) throw httpError('errors.cannotDeleteLastAdminAccount', 400)
   }
 
   // Hard delete — cascades to refreshTokens, memberships, subscriptions,
@@ -176,5 +173,5 @@ export const deleteAccount = async (userId, password) => {
   // Owned organizations are cascade-deleted (onDelete: Cascade on OrgOwner).
   await prisma.user.delete({ where: { id: userId } })
 
-  return { message: 'Account deleted successfully', email: user.email }
+  return { messageKey: 'messages.accountDeletedSuccessfully', email: user.email }
 }
