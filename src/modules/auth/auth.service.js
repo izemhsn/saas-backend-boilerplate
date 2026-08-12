@@ -210,6 +210,7 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
           tokenVersion: true,
           banned: true,
           suspendedUntil: true,
+          deletedAt: true,
         },
       },
     },
@@ -228,6 +229,9 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
   if (!storedToken) throw httpError('errors.invalidRefreshToken', 401)
 
   const user = storedToken.user
+
+  // Soft-deleted users must not be able to mint new tokens
+  if (user.deletedAt) throw httpError('errors.invalidRefreshToken', 401)
 
   if (user.banned) {
     throw httpError('errors.accountBanned', 403)
@@ -257,8 +261,8 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
 }
 
 export const verifyEmail = async ({ token }) => {
-  const user = await prisma.user.findUnique({
-    where: { emailVerificationToken: hashToken(token) },
+  const user = await prisma.user.findFirst({
+    where: { emailVerificationToken: hashToken(token), deletedAt: null },
     select: { id: true, emailVerified: true, pendingEmail: true, emailVerificationExpires: true },
   })
   if (!user) throw httpError('errors.invalidOrExpiredVerificationToken', 400)
@@ -365,8 +369,8 @@ export const forgotPassword = async ({ email }, { locale } = {}) => {
 }
 
 export const resetPassword = async ({ token, newPassword }) => {
-  const user = await prisma.user.findUnique({
-    where: { passwordResetToken: hashToken(token) },
+  const user = await prisma.user.findFirst({
+    where: { passwordResetToken: hashToken(token), deletedAt: null },
     select: { id: true, passwordResetExpires: true },
   })
   if (!user || !user.passwordResetExpires || user.passwordResetExpires < new Date()) {
@@ -395,8 +399,8 @@ export const resetPassword = async ({ token, newPassword }) => {
 }
 
 export const changePassword = async (userId, { currentPassword, newPassword }) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { id: true, password: true },
   })
   if (!user) throw httpError('errors.userNotFound', 404)
@@ -418,8 +422,8 @@ export const changePassword = async (userId, { currentPassword, newPassword }) =
 }
 
 export const changeEmail = async (userId, { newEmail, password }, { locale } = {}) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { id: true, name: true, password: true },
   })
   if (!user) throw httpError('errors.userNotFound', 404)
@@ -436,9 +440,9 @@ export const changeEmail = async (userId, { newEmail, password }, { locale } = {
   })
   if (taken) throw httpError('errors.emailAlreadyInUse', 409)
 
-  // Check if pendingEmail is already claimed by another user
+  // Check if pendingEmail is already claimed by another (non-deleted) user
   const pendingTaken = await prisma.user.findFirst({
-    where: { pendingEmail: normalizedNewEmail, NOT: { id: userId } },
+    where: { pendingEmail: normalizedNewEmail, deletedAt: null, NOT: { id: userId } },
     select: { id: true },
   })
   if (pendingTaken) throw httpError('errors.emailAlreadyInUse', 409)
@@ -582,8 +586,8 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
 }
 
 export const getMe = async (userId) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: userSelect,
   })
   if (!user) throw httpError('errors.userNotFound', 404)

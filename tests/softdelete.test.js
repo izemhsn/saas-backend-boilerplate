@@ -376,3 +376,149 @@ describe('Soft delete — API Key', () => {
     expect(found).toBeDefined()
   })
 })
+
+describe('Soft delete — token & profile flows blocked', () => {
+  it('soft-deleted user cannot reset password with a stale token', async () => {
+    const user = await registerUser('sd-reset')
+    // Generate a real reset token directly in the DB
+    const { randomBytes, createHash } = await import('crypto')
+    const rawToken = randomBytes(32).toString('hex')
+    const hashed = createHash('sha256').update(rawToken).digest('hex')
+    await prisma.user.update({
+      where: { id: user.userId },
+      data: { passwordResetToken: hashed, passwordResetExpires: new Date(Date.now() + 3600_000) },
+    })
+
+    // Soft-delete the user
+    await request(app)
+      .delete(`/api/admin/users/${user.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, newPassword: 'NewPassword123' })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('soft-deleted user cannot verify email with a stale token', async () => {
+    const user = await registerUser('sd-verify')
+    const { randomBytes, createHash } = await import('crypto')
+    const rawToken = randomBytes(32).toString('hex')
+    const hashed = createHash('sha256').update(rawToken).digest('hex')
+    await prisma.user.update({
+      where: { id: user.userId },
+      data: {
+        emailVerificationToken: hashed,
+        emailVerificationExpires: new Date(Date.now() + 3600_000),
+      },
+    })
+
+    await request(app)
+      .delete(`/api/admin/users/${user.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    const res = await request(app).post('/api/auth/verify-email').send({ token: rawToken })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('soft-deleted user cannot refresh tokens', async () => {
+    const user = await registerUser('sd-refresh')
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user.email, password: VALID_PASSWORD })
+    const refreshToken = loginRes.body.data.refreshToken
+
+    await request(app)
+      .delete(`/api/admin/users/${user.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('User-Agent', 'test-agent')
+      .send({ refreshToken })
+
+    expect(res.status).toBe(401)
+  })
+
+  it('soft-deleted user cannot change password', async () => {
+    const user = await registerUser('sd-changepw')
+    const token = await login(user.email)
+
+    await request(app)
+      .delete(`/api/admin/users/${user.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    // The authenticate middleware should reject first (tokenVersion invalidation),
+    // but even if a token slipped through, the service must refuse
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: VALID_PASSWORD, newPassword: 'NewPassword123' })
+
+    expect(res.status).toBe(401)
+  })
+
+  it('soft-deleted user is excluded from org member list', async () => {
+    const owner = await registerUser('sd-mem-owner')
+    const member = await registerUser('sd-mem-user')
+
+    const orgRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ name: 'Member List Org', slug: `sd-mem-${RUN_ID}` })
+    const orgId = orgRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    // Add member directly in DB
+    await prisma.organizationMember.create({
+      data: { organizationId: orgId, userId: member.userId, role: 'MEMBER' },
+    })
+
+    // Soft-delete the member
+    await request(app)
+      .delete(`/api/admin/users/${member.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/members`)
+      .set('Authorization', `Bearer ${owner.token}`)
+
+    expect(res.status).toBe(200)
+    const found = res.body.data.members.find((m) => m.userId === member.userId)
+    expect(found).toBeUndefined()
+  })
+
+  it('soft-deleted user cannot accept an org invitation', async () => {
+    const owner = await registerUser('sd-inv-owner')
+    const invitee = await registerUser('sd-inv-user')
+
+    const orgRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ name: 'Inv Block Org', slug: `sd-inv-${RUN_ID}` })
+    const orgId = orgRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    // Send invitation
+    const inviteRes = await request(app)
+      .post(`/api/organizations/${orgId}/invitations`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ email: invitee.email, role: 'MEMBER' })
+    expect(inviteRes.status).toBe(201)
+    const invitationToken = inviteRes.body.data.invitation.token
+
+    // Soft-delete the invitee
+    await request(app)
+      .delete(`/api/admin/users/${invitee.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    // Try to accept — authenticate middleware rejects soft-deleted user's token
+    const res = await request(app)
+      .post(`/api/organizations/invitations/${invitationToken}/accept`)
+      .set('Authorization', `Bearer ${invitee.token}`)
+
+    expect(res.status).toBe(401)
+  })
+})

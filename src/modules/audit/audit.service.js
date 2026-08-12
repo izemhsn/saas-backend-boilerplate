@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js'
 import { paginationParams, paginationMeta, parseSort } from '../../utils/query.js'
+import logger from '../../utils/logger.js'
 
 const auditSelect = {
   id: true,
@@ -31,7 +32,7 @@ export const log = (
         metadata,
       },
     })
-    .catch(() => {})
+    .catch((err) => logger.error({ err }, 'Audit log write failed'))
 }
 
 export const listAuditLogs = async (query = {}) => {

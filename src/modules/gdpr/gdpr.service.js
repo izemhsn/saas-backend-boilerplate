@@ -5,8 +5,8 @@ import { comparePassword } from '../../utils/hash.js'
 // ── Data Export ─────────────────────────────────────────────────────
 
 export const exportData = async (userId) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: {
       id: true,
       email: true,
@@ -145,8 +145,8 @@ export const exportData = async (userId) => {
 // ── Account Deletion (hard delete) ──────────────────────────────────
 
 export const deleteAccount = async (userId, password) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { id: true, password: true, role: true, email: true },
   })
 

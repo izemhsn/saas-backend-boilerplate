@@ -34,9 +34,9 @@ export const createInvitation = async (orgId, inviterId, { email, role }) => {
 
   if (role === 'OWNER') throw httpError('errors.cannotInviteAsOwner', 400)
 
-  // Check if user is already a member
-  const existingMember = await prisma.user.findUnique({
-    where: { email: inviteeEmail },
+  // Check if user is already a member (soft-deleted users don't count)
+  const existingMember = await prisma.user.findFirst({
+    where: { email: inviteeEmail, deletedAt: null },
     select: {
       id: true,
       memberships: {
@@ -108,8 +108,8 @@ export const listInvitations = async (orgId, query = {}) => {
 export const listMyInvitations = async (userId, query = {}) => {
   const { page, limit, search, sort, order } = query
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { email: true },
   })
   if (!user) throw httpError('errors.userNotFound', 404)
@@ -162,8 +162,8 @@ export const acceptInvitation = async (userId, token) => {
     throw httpError('errors.invitationExpired', 400)
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { email: true },
   })
 
@@ -228,8 +228,8 @@ export const declineInvitation = async (userId, token) => {
     throw httpError('errors.invitationExpired', 400)
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { email: true },
   })
 

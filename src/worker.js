@@ -1,7 +1,7 @@
 import './instrument.js'
 import 'dotenv/config'
-import { startEmailWorker } from './modules/jobs/email.worker.js'
-import { startMaintenanceWorker } from './modules/jobs/maintenance.worker.js'
+import { startEmailWorker, stopEmailWorker } from './modules/jobs/email.worker.js'
+import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/jobs/maintenance.worker.js'
 import { scheduleRefreshTokenCleanup } from './modules/jobs/maintenance.producer.js'
 import { closeRedisConnection } from './config/redis.js'
 import logger from './utils/logger.js'
@@ -24,6 +24,9 @@ const shutdown = async (signal) => {
   if (shuttingDown) return
   shuttingDown = true
   logger.info(`${signal} received — shutting down worker`)
+  // Close BullMQ workers first so in-flight jobs finish (or are re-queued)
+  // before the Redis connection they depend on is torn down
+  await Promise.allSettled([stopEmailWorker(), stopMaintenanceWorker()])
   await closeRedisConnection()
   process.exit(0)
 }
