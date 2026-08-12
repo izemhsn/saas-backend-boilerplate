@@ -128,7 +128,8 @@ export const restoreOrganization = async (orgId) => {
 export const listMembers = async (orgId, query = {}) => {
   const { page, limit, search, sort, order } = query
 
-  const where = { organizationId: orgId }
+  // Exclude memberships of soft-deleted users
+  const where = { organizationId: orgId, user: { deletedAt: null } }
 
   const searchClause = buildSearch(search, ['user.name', 'user.email'])
   if (searchClause) where.OR = searchClause

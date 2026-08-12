@@ -35,8 +35,8 @@ const createRefreshTokenRecord = async (userId, { userAgent, ipAddress } = {}) =
 }
 
 export const setup = async (userId) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { id: true, email: true, twoFactorEnabled: true },
   })
   if (!user) throw httpError('errors.userNotFound', 404)
@@ -61,8 +61,8 @@ export const setup = async (userId) => {
 }
 
 export const enable = async (userId, { code }) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { id: true, twoFactorSecret: true, twoFactorEnabled: true },
   })
   if (!user) throw httpError('errors.userNotFound', 404)
@@ -99,8 +99,8 @@ export const enable = async (userId, { code }) => {
 }
 
 export const disable = async (userId, { password }) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
     select: { id: true, password: true, twoFactorEnabled: true },
   })
   if (!user) throw httpError('errors.userNotFound', 404)
@@ -149,6 +149,7 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
           tokenVersion: true,
           banned: true,
           suspendedUntil: true,
+          deletedAt: true,
           twoFactorSecret: true,
           twoFactorBackupCodes: true,
         },
@@ -164,6 +165,9 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
   }
 
   const { user } = stored
+
+  // Soft-deleted users must not be able to complete a login challenge
+  if (user.deletedAt) throw httpError('errors.invalidOrExpiredChallenge', 401)
 
   if (user.banned) throw httpError('errors.accountBanned', 403)
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
