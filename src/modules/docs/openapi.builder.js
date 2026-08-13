@@ -155,7 +155,7 @@ export const buildSpec = (overrides = {}) => {
       title: 'SaaS Backend Boilerplate API',
       version: '1.0.0',
       description:
-        'Production-ready Express 5 + Prisma SaaS backend. Authentication, multi-tenancy, billing, RBAC, audit logging, and more.\n\nAll protected endpoints require a `Authorization: Bearer <jwt>` header. API-key-authenticated endpoints use `X-API-Key`.',
+        'Production-ready Express 5 + Prisma SaaS backend. Authentication, multi-tenancy, billing, RBAC, audit logging, and more.\n\nAll protected endpoints require a `Authorization: Bearer <jwt>` header. API-key-authenticated endpoints use `X-API-Key`.\n\n**Internationalization:** All error messages, success messages, and validation errors are localized. Set the `Accept-Language` header (e.g. `fr-FR,fr;q=0.9,en;q=0.8`) or the `X-Lang` header (e.g. `fr`) to control the response language. Supported locales: `en` (default), `fr`.',
     },
     servers: [{ url: process.env.APP_URL || 'http://localhost:3000' }],
     tags: [...tagSet].sort().map((name) => ({ name, description: `${name} endpoints` })),

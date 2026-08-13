@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { prisma } from '../../config/db.js'
 import { httpError } from '../../utils/httpError.js'
 import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
@@ -157,16 +158,31 @@ export const evaluateFlag = async (key, orgId = null, planName = null) => {
     })
 
     if (override) {
-      const result = evaluateByType(flag.type, override.value, override.enabled, planName)
+      const result = evaluateByType(
+        flag.type,
+        override.value,
+        override.enabled,
+        planName,
+        key,
+        orgId,
+      )
       return { key, ...result, reason: 'OVERRIDE' }
     }
   }
 
-  const result = evaluateByType(flag.type, flag.value, true, planName)
+  const result = evaluateByType(flag.type, flag.value, true, planName, key, orgId)
   return { key, ...result, reason: 'DEFAULT' }
 }
 
-const evaluateByType = (type, value, enabled, planName) => {
+// Deterministic bucket for PERCENTAGE flags — same org+flag always yields the same
+// result so users don't flip in/out of a rollout on every request.
+// Uses the first 4 bytes of SHA-256(orgId + ':' + flagKey) mod 100.
+const deterministicBucket = (flagKey, orgId) => {
+  const hash = createHash('sha256').update(`${orgId}:${flagKey}`).digest()
+  return hash.readUInt32BE(0) % 100
+}
+
+const evaluateByType = (type, value, enabled, planName, flagKey, orgId) => {
   if (!enabled) return { enabled: false }
 
   switch (type) {
@@ -177,7 +193,10 @@ const evaluateByType = (type, value, enabled, planName) => {
       const pct = value?.percentage ?? 0
       if (pct <= 0) return { enabled: false }
       if (pct >= 100) return { enabled: true }
-      return { enabled: Math.random() * 100 < pct }
+      // Deterministic bucket — falls back to a stable hash of just the flag key
+      // when no orgId is provided (e.g. user-level evaluation)
+      const bucket = deterministicBucket(flagKey, orgId ?? 'global')
+      return { enabled: bucket < pct }
     }
 
     case 'PLAN': {

@@ -579,3 +579,120 @@ describe('Feature flag service — PERCENTAGE evaluation', () => {
     expect(result.reason).toBe('FLAG_NOT_FOUND_OR_INACTIVE')
   })
 })
+
+describe('Feature flag service — PERCENTAGE determinism', () => {
+  it('returns the same result for the same org+flag across calls', async () => {
+    const { token, userId } = await registerUser('pct-det', 'ADMIN')
+    const org = await createOrg(userId, `pct-det-org-${RUN_ID}`)
+
+    const createRes = await request(app)
+      .post('/api/feature-flags')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        key: `test-flag-pct-det-${RUN_ID}`,
+        name: 'PCT Det',
+        type: 'PERCENTAGE',
+        value: { percentage: 50 },
+      })
+    createdFlagIds.push(createRes.body.data.flag.id)
+
+    // Evaluate 10 times — must be the same result every time
+    const results = new Set()
+    for (let i = 0; i < 10; i++) {
+      const r = await flagService.evaluateFlag(`test-flag-pct-det-${RUN_ID}`, org.id)
+      results.add(r.enabled)
+    }
+    expect(results.size).toBe(1)
+  })
+
+  it('different orgs can get different buckets', async () => {
+    const { token, userId } = await registerUser('pct-spread', 'ADMIN')
+    const org1 = await createOrg(userId, `pct-spread-1-${RUN_ID}`)
+    const { userId: userId2 } = await registerUser('pct-spread-2', 'ADMIN')
+    const org2 = await createOrg(userId2, `pct-spread-2-${RUN_ID}`)
+
+    const createRes = await request(app)
+      .post('/api/feature-flags')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        key: `test-flag-pct-spread-${RUN_ID}`,
+        name: 'PCT Spread',
+        type: 'PERCENTAGE',
+        value: { percentage: 50 },
+      })
+    createdFlagIds.push(createRes.body.data.flag.id)
+
+    const r1 = await flagService.evaluateFlag(`test-flag-pct-spread-${RUN_ID}`, org1.id)
+    const r2 = await flagService.evaluateFlag(`test-flag-pct-spread-${RUN_ID}`, org2.id)
+
+    // With 50% and two different orgs, there's a decent chance they differ.
+    // We don't assert they MUST differ (that would be flaky), just that both
+    // are valid booleans and deterministic (call each twice)
+    expect(typeof r1.enabled).toBe('boolean')
+    expect(typeof r2.enabled).toBe('boolean')
+    const r1b = await flagService.evaluateFlag(`test-flag-pct-spread-${RUN_ID}`, org1.id)
+    const r2b = await flagService.evaluateFlag(`test-flag-pct-spread-${RUN_ID}`, org2.id)
+    expect(r1b.enabled).toBe(r1.enabled)
+    expect(r2b.enabled).toBe(r2.enabled)
+  })
+})
+
+describe('Feature flag evaluation — org owner plan', () => {
+  it('uses the org owner’s subscription, not a random member’s', async () => {
+    // Owner has no subscription (Free), member has a Pro subscription.
+    // A PLAN flag gated to "Pro" should evaluate as disabled for this org.
+    const owner = await registerUser('plan-owner')
+    const member = await registerUser('plan-member')
+
+    const org = await prisma.organization.create({
+      data: {
+        name: 'Plan Test Org',
+        slug: `plan-owner-org-${RUN_ID}`,
+        ownerId: owner.userId,
+        members: {
+          create: [
+            { userId: owner.userId, role: 'OWNER' },
+            { userId: member.userId, role: 'MEMBER' },
+          ],
+        },
+      },
+      select: { id: true },
+    })
+    createdOrgIds.push(org.id)
+
+    // Give the member a Pro subscription (owner stays Free / no subscription)
+    const proPlan = await prisma.plan.findFirst({ where: { name: 'Pro' }, select: { id: true } })
+    if (proPlan) {
+      await prisma.subscription.create({
+        data: {
+          userId: member.userId,
+          planId: proPlan.id,
+          stripeSubscriptionId: `sub_test_${RUN_ID}_${member.userId}`,
+          stripeCustomerId: `cus_test_${RUN_ID}_${member.userId}`,
+          status: 'ACTIVE',
+        },
+      })
+    }
+
+    // Create a PLAN flag gated to Pro
+    const { token: adminToken } = await registerUser('plan-admin', 'ADMIN')
+    const createRes = await request(app)
+      .post('/api/feature-flags')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        key: `test-flag-plan-owner-${RUN_ID}`,
+        name: 'Plan Owner',
+        type: 'PLAN',
+        value: { plans: ['Pro'] },
+      })
+    createdFlagIds.push(createRes.body.data.flag.id)
+
+    // Evaluate for the org — should be disabled because the OWNER has no Pro sub
+    const res = await request(app)
+      .get(`/api/feature-flags/evaluate?key=test-flag-plan-owner-${RUN_ID}&orgId=${org.id}`)
+      .set('Authorization', `Bearer ${owner.token}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.enabled).toBe(false)
+  })
+})

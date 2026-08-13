@@ -35,9 +35,20 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
-// Helper: wait for fire-and-forget audit logs to flush
-const flushAuditLogs = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 300))
+// Helper: wait for fire-and-forget audit logs to flush.
+// Polls up to 2s instead of a fixed sleep — more reliable under parallel load.
+const flushAuditLogs = async (predicate = null, { timeout = 2000, interval = 100 } = {}) => {
+  if (!predicate) {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    return
+  }
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const result = await predicate()
+    if (result) return result
+    await new Promise((resolve) => setTimeout(resolve, interval))
+  }
+  return null
 }
 
 describe('GET /api/audit (admin)', () => {
@@ -232,11 +243,9 @@ describe('Audit log integration', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ banned: true })
 
-    await flushAuditLogs()
-
-    const log = await prisma.auditLog.findFirst({
-      where: { action: 'USER_BANNED', targetUserId },
-    })
+    const log = await flushAuditLogs(() =>
+      prisma.auditLog.findFirst({ where: { action: 'USER_BANNED', targetUserId } }),
+    )
     expect(log).not.toBeNull()
     expect(log.userId).toBe(adminUserId)
   })

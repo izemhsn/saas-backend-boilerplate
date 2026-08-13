@@ -112,9 +112,11 @@ export const evaluateFlag = async (req, res, next) => {
     let planName = null
 
     if (orgId) {
+      // Use the org owner's subscription to determine the plan — not just any
+      // member's subscription (a Free org with one Pro member should evaluate as Free)
       const sub = await prisma.subscription.findFirst({
         where: {
-          user: { memberships: { some: { organizationId: orgId } } },
+          user: { ownedOrganizations: { some: { id: orgId } } },
           status: { in: ['ACTIVE', 'TRIALING'] },
         },
         select: { plan: { select: { name: true } } },
