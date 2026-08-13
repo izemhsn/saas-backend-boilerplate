@@ -31,6 +31,7 @@ const auditActions = [
   'API_KEY_CREATED',
   'API_KEY_REVOKED',
   'API_KEY_DELETED',
+  'API_KEY_RESTORED',
   'SUBSCRIPTION_CREATED',
   'SUBSCRIPTION_UPDATED',
   'SUBSCRIPTION_CANCELED',
@@ -45,6 +46,8 @@ const auditActions = [
   'USER_DATA_DELETED',
   'TWO_FACTOR_ENABLED',
   'TWO_FACTOR_DISABLED',
+  'SESSION_REVOKED',
+  'SESSIONS_REVOKED_ALL',
 ]
 
 export const listAuditLogsSchema = z.object({

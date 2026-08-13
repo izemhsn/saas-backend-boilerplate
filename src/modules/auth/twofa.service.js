@@ -4,11 +4,13 @@ import QRCode from 'qrcode'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../../config/db.js'
 import { hashPassword, comparePassword } from '../../utils/hash.js'
-import { signToken, signRefreshToken } from '../../utils/jwt.js'
+import { signToken } from '../../utils/jwt.js'
 import { httpError } from '../../utils/httpError.js'
+import { createRefreshTokenRecord } from './auth.service.js'
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const BACKUP_CODE_COUNT = 10
+const ISSUER = process.env.APP_NAME || 'SaaS Boilerplate'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -18,20 +20,6 @@ const userSelect = {
   email: true,
   role: true,
   createdAt: true,
-}
-
-const createRefreshTokenRecord = async (userId, { userAgent, ipAddress } = {}) => {
-  const refreshToken = signRefreshToken({ sub: userId })
-  await prisma.refreshToken.create({
-    data: {
-      token: hashToken(refreshToken),
-      userId,
-      userAgent: userAgent ?? null,
-      ipAddress: ipAddress ?? null,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
-  })
-  return refreshToken
 }
 
 export const setup = async (userId) => {
@@ -46,7 +34,7 @@ export const setup = async (userId) => {
   const otpauth = await generateURI({
     secret,
     accountName: user.email,
-    issuer: 'SaaS Boilerplate',
+    issuer: ISSUER,
   })
 
   // Store the secret temporarily on the user record (not yet enabled)

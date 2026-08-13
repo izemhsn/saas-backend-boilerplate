@@ -68,6 +68,12 @@ export const deleteApiKey = async (req, res, next) => {
 export const restoreApiKey = async (req, res, next) => {
   try {
     const data = await apiKeyService.restoreApiKey(req.user.id, req.validated.params.keyId)
+    auditLog('API_KEY_RESTORED', {
+      userId: req.user.id,
+      metadata: { keyId: req.validated.params.keyId },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)

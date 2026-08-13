@@ -95,7 +95,11 @@ export const createCheckoutSession = async (userId, { planId, successUrl, cancel
   if (customerId) {
     try {
       await stripe.customers.retrieve(customerId)
-    } catch {
+    } catch (err) {
+      // Only treat "resource_missing" (deleted/invalid customer) as a signal to
+      // recreate — re-throw network errors, rate limits, and other transient issues
+      // so they surface instead of silently creating duplicate customers
+      if (err?.code !== 'resource_missing') throw err
       customerId = null
     }
   }

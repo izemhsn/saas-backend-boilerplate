@@ -15,8 +15,10 @@ export const sanitizeString = (str) => {
   return str.replace(HTML_TAG_RE, '').replace(JS_URI_RE, '').replace(ON_EVENT_RE, '')
 }
 
+// Pure (non-mutating) sanitizer — returns a new cleaned object. Used by tests.
+// The middleware itself uses sanitizeInPlace (below) for performance.
 export const sanitizeValue = (value, depth = 0) => {
-  if (depth > 10) return value // Prevent deeply nested payloads from causing excessive recursion
+  if (depth > 10) return value
   if (value === null || value === undefined) return value
   if (typeof value === 'string') return sanitizeString(value)
   if (typeof value !== 'object') return value
@@ -25,7 +27,7 @@ export const sanitizeValue = (value, depth = 0) => {
   const cleaned = {}
   for (const [key, val] of Object.entries(value)) {
     if (DANGEROUS_KEYS.has(key)) continue
-    if (key.startsWith('$')) continue // Strip Prisma/Mongo operator keys ($gt, $or, etc.)
+    if (key.startsWith('$')) continue
     cleaned[key] = sanitizeValue(val, depth + 1)
   }
   return cleaned

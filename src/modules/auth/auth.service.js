@@ -15,7 +15,7 @@ import { createChallenge } from './twofa.service.js'
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days — must match JWT_REFRESH_EXPIRES_IN
+export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days — must match JWT_REFRESH_EXPIRES_IN
 const MAX_FAILED_ATTEMPTS = 5
 const LOCK_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 
@@ -31,7 +31,7 @@ const userSelect = {
 }
 
 // Create a refresh token record in the DB and return the raw token
-const createRefreshTokenRecord = async (userId, { userAgent, ipAddress } = {}) => {
+export const createRefreshTokenRecord = async (userId, { userAgent, ipAddress } = {}) => {
   const refreshToken = signRefreshToken({ sub: userId })
   await prisma.refreshToken.create({
     data: {
@@ -227,6 +227,17 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
   }
 
   if (!storedToken) throw httpError('errors.invalidRefreshToken', 401)
+
+  // Defense-in-depth: even if the JWT expiry check passed, verify the DB row hasn't
+  // expired. This catches the case where JWT_REFRESH_EXPIRES_IN was changed but old
+  // tokens with a different TTL still exist in the database.
+  if (storedToken.expiresAt && storedToken.expiresAt < new Date()) {
+    await prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { revoked: true },
+    })
+    throw httpError('errors.invalidRefreshToken', 401)
+  }
 
   const user = storedToken.user
 
