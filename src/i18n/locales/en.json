@@ -95,6 +95,7 @@
     "noPasswordSet": "This account has no password set. Please set a password before deleting your account."
   },
   "messages": {
+    "emailAlreadyVerified": "Email already verified",
     "emailVerifiedSuccessfully": "Email verified successfully",
     "verificationEmailSent": "If that account needs verification, a new token has been issued.",
     "verificationEmailSentToNewAddress": "Verification email sent to your new address. Your email will change after verification.",
