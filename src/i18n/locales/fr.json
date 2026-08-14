@@ -95,6 +95,7 @@
     "noPasswordSet": "Ce compte n'a pas de mot de passe défini. Veuillez définir un mot de passe avant de supprimer votre compte."
   },
   "messages": {
+    "emailAlreadyVerified": "E-mail déjà vérifié",
     "emailVerifiedSuccessfully": "E-mail vérifié avec succès",
     "verificationEmailSent": "Si ce compte nécessite une vérification, un nouveau jeton a été émis.",
     "verificationEmailSentToNewAddress": "E-mail de vérification envoyé à votre nouvelle adresse. Votre e-mail changera après vérification.",
