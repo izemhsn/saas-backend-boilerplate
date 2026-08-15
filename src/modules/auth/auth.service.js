@@ -145,15 +145,20 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
 
   if (!valid) {
     if (user) {
-      const failedAttempts = user.failedLoginAttempts + 1
-      const updateData = { failedLoginAttempts: failedAttempts }
-      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-        updateData.lockedUntil = new Date(Date.now() + LOCK_DURATION_MS)
-      }
-      await prisma.user.update({
+      // Atomic increment — avoids the read-modify-write race where concurrent
+      // failed logins could read the same count and both write the same value,
+      // allowing more than MAX_FAILED_ATTEMPTS before locking.
+      const updated = await prisma.user.update({
         where: { id: user.id },
-        data: updateData,
+        data: { failedLoginAttempts: { increment: 1 } },
+        select: { failedLoginAttempts: true },
       })
+      if (updated.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lockedUntil: new Date(Date.now() + LOCK_DURATION_MS) },
+        })
+      }
     }
     throw httpError('errors.invalidCredentials', 401)
   }
