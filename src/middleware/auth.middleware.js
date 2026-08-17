@@ -21,6 +21,7 @@ export const authenticate = async (req, res, next) => {
       where: { id: decoded.id, deletedAt: null },
       select: {
         id: true,
+        name: true,
         email: true,
         role: true,
         tokenVersion: true,
@@ -48,7 +49,13 @@ export const authenticate = async (req, res, next) => {
       })
     }
 
-    req.user = { id: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion }
+    req.user = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    }
     next()
   } catch {
     res.status(401).json({

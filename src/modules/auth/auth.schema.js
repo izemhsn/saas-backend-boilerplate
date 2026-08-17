@@ -3,7 +3,7 @@ import { z } from 'zod'
 export const registerSchema = z.object({
   body: z.object({
     name: z.string().min(2, 'validation.nameMinLength'),
-    email: z.string().email('validation.invalidEmail'),
+    email: z.email('validation.invalidEmail'),
     password: z
       .string()
       .min(8, 'validation.passwordMinLength')
@@ -14,7 +14,7 @@ export const registerSchema = z.object({
 
 export const loginSchema = z.object({
   body: z.object({
-    email: z.string().email('validation.invalidEmail'),
+    email: z.email('validation.invalidEmail'),
     password: z.string().min(1, 'validation.passwordRequired'),
   }),
 })
@@ -44,20 +44,20 @@ export const changePasswordSchema = z.object({
 
 export const changeEmailSchema = z.object({
   body: z.object({
-    newEmail: z.string().email('validation.invalidEmail'),
+    newEmail: z.email('validation.invalidEmail'),
     password: z.string().min(1, 'validation.passwordRequiredConfirm'),
   }),
 })
 
 export const resendVerificationSchema = z.object({
   body: z.object({
-    email: z.string().email('validation.invalidEmail'),
+    email: z.email('validation.invalidEmail'),
   }),
 })
 
 export const forgotPasswordSchema = z.object({
   body: z.object({
-    email: z.string().email('validation.invalidEmail'),
+    email: z.email('validation.invalidEmail'),
   }),
 })
 
