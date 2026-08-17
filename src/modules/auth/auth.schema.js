@@ -7,6 +7,7 @@ export const registerSchema = z.object({
     password: z
       .string()
       .min(8, 'validation.passwordMinLength')
+      .max(72, 'validation.passwordMaxLength')
       .regex(/[A-Z]/, 'validation.passwordUppercase')
       .regex(/[0-9]/, 'validation.passwordNumber'),
   }),
@@ -15,7 +16,7 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   body: z.object({
     email: z.email('validation.invalidEmail'),
-    password: z.string().min(1, 'validation.passwordRequired'),
+    password: z.string().min(1, 'validation.passwordRequired').max(72, 'validation.passwordMaxLength'),
   }),
 })
 
@@ -33,10 +34,11 @@ export const verifyEmailSchema = z.object({
 
 export const changePasswordSchema = z.object({
   body: z.object({
-    currentPassword: z.string().min(1, 'validation.currentPasswordRequired'),
+    currentPassword: z.string().min(1, 'validation.currentPasswordRequired').max(72, 'validation.passwordMaxLength'),
     newPassword: z
       .string()
       .min(8, 'validation.passwordMinLength')
+      .max(72, 'validation.passwordMaxLength')
       .regex(/[A-Z]/, 'validation.passwordUppercase')
       .regex(/[0-9]/, 'validation.passwordNumber'),
   }),
@@ -45,7 +47,7 @@ export const changePasswordSchema = z.object({
 export const changeEmailSchema = z.object({
   body: z.object({
     newEmail: z.email('validation.invalidEmail'),
-    password: z.string().min(1, 'validation.passwordRequiredConfirm'),
+    password: z.string().min(1, 'validation.passwordRequiredConfirm').max(72, 'validation.passwordMaxLength'),
   }),
 })
 
@@ -75,6 +77,7 @@ export const resetPasswordSchema = z.object({
     newPassword: z
       .string()
       .min(8, 'validation.passwordMinLength')
+      .max(72, 'validation.passwordMaxLength')
       .regex(/[A-Z]/, 'validation.passwordUppercase')
       .regex(/[0-9]/, 'validation.passwordNumber'),
   }),

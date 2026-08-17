@@ -45,6 +45,13 @@ const LOCK_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
 
+// Dev/test convenience: include raw verification/reset tokens in API responses
+// so they can be used without a mail inbox. Fail-closed — tokens are only
+// exposed when NODE_ENV is explicitly 'development' or 'test', so a production
+// deployment that forgets to set NODE_ENV never leaks account-takeover tokens.
+const EXPOSE_DEV_TOKENS =
+  process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+
 // Only select safe fields — password hash never leaves the DB
 const userSelect = {
   id: true,
@@ -119,7 +126,7 @@ export const register = async (
       tokenVersion,
     }),
     refreshToken,
-    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+    ...(EXPOSE_DEV_TOKENS && { emailVerificationToken }),
   }
 }
 
@@ -373,7 +380,7 @@ export const resendVerification = async ({ email }, { locale } = {}) => {
 
   return {
     messageKey: 'messages.verificationEmailSent',
-    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+    ...(EXPOSE_DEV_TOKENS && { emailVerificationToken }),
   }
 }
 
@@ -404,7 +411,7 @@ export const forgotPassword = async ({ email }, { locale } = {}) => {
 
   return {
     messageKey: 'messages.passwordResetTokenSent',
-    ...(process.env.NODE_ENV !== 'production' && { resetToken }),
+    ...(EXPOSE_DEV_TOKENS && { resetToken }),
   }
 }
 
@@ -505,7 +512,7 @@ export const changeEmail = async (userId, { newEmail, password }, { locale } = {
   })
   return {
     messageKey: 'messages.verificationEmailSentToNewAddress',
-    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+    ...(EXPOSE_DEV_TOKENS && { emailVerificationToken }),
   }
 }
 

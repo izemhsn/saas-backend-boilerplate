@@ -55,8 +55,8 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
-describe('GET /api/auth/data-export', () => {
-  it('exports all user data', async () => {
+describe('POST /api/auth/data-export', () => {
+  it('exports all user data with password re-auth', async () => {
     const { token, userId } = await registerUser('export')
 
     // Create some associated data
@@ -80,8 +80,9 @@ describe('GET /api/auth/data-export', () => {
     })
 
     const res = await request(app)
-      .get('/api/auth/data-export')
+      .post('/api/auth/data-export')
       .set('Authorization', `Bearer ${token}`)
+      .send({ password: VALID_PASSWORD })
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
@@ -99,7 +100,7 @@ describe('GET /api/auth/data-export', () => {
   })
 
   it('rejects without auth', async () => {
-    const res = await request(app).get('/api/auth/data-export')
+    const res = await request(app).post('/api/auth/data-export').send({ password: VALID_PASSWORD })
     expect(res.status).toBe(401)
   })
 
@@ -112,10 +113,33 @@ describe('GET /api/auth/data-export', () => {
     createdUserIds.splice(createdUserIds.indexOf(user.id), 1)
 
     const res = await request(app)
-      .get('/api/auth/data-export')
+      .post('/api/auth/data-export')
       .set('Authorization', `Bearer ${token}`)
+      .send({ password: VALID_PASSWORD })
 
     // authenticate middleware rejects because user no longer exists
+    expect(res.status).toBe(401)
+  })
+
+  it('rejects data export without password', async () => {
+    const { token } = await registerUser('export-no-pw')
+
+    const res = await request(app)
+      .post('/api/auth/data-export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+
+    expect(res.status).toBe(401)
+  })
+
+  it('rejects data export with wrong password', async () => {
+    const { token } = await registerUser('export-wrong-pw')
+
+    const res = await request(app)
+      .post('/api/auth/data-export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'WrongPassword123' })
+
     expect(res.status).toBe(401)
   })
 })

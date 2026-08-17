@@ -4,7 +4,7 @@ import { translateResult } from '../../utils/i18nResponse.js'
 
 export const exportData = async (req, res, next) => {
   try {
-    const data = await gdprService.exportData(req.user.id)
+    const data = await gdprService.exportData(req.user.id, req.validated?.body?.password)
     auditLog('USER_DATA_EXPORTED', {
       userId: req.user.id,
       ipAddress: req.ip,
