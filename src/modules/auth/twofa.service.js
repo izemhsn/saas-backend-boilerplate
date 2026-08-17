@@ -6,10 +6,14 @@ import { prisma } from '../../config/db.js'
 import { hashPassword, comparePassword } from '../../utils/hash.js'
 import { signToken } from '../../utils/jwt.js'
 import { httpError } from '../../utils/httpError.js'
+import { encryptSecret, decryptSecret } from '../../utils/secretCrypto.js'
 import { createRefreshTokenRecord } from './auth.service.js'
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const BACKUP_CODE_COUNT = 10
+// Max failed code attempts per challenge — caps TOTP brute-forcing to 5 tries
+// per successful password login, independent of IP-based rate limiting.
+const MAX_CHALLENGE_ATTEMPTS = 5
 const ISSUER = process.env.APP_NAME || 'SaaS Boilerplate'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
@@ -37,10 +41,11 @@ export const setup = async (userId) => {
     issuer: ISSUER,
   })
 
-  // Store the secret temporarily on the user record (not yet enabled)
+  // Store the secret temporarily on the user record (not yet enabled),
+  // encrypted at rest so a DB leak doesn't expose TOTP seeds
   await prisma.user.update({
     where: { id: userId },
-    data: { twoFactorSecret: secret },
+    data: { twoFactorSecret: encryptSecret(secret) },
   })
 
   const qrCode = await QRCode.toDataURL(otpauth)
@@ -59,7 +64,7 @@ export const enable = async (userId, { code }) => {
 
   let valid = false
   try {
-    const result = await verify({ token: code, secret: user.twoFactorSecret })
+    const result = await verify({ token: code, secret: decryptSecret(user.twoFactorSecret) })
     valid = result.valid
   } catch {
     // Invalid token format
@@ -147,6 +152,9 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
 
   if (!stored) throw httpError('errors.invalidOrExpiredChallenge', 401)
   if (stored.used) throw httpError('errors.challengeAlreadyUsed', 401)
+  if (stored.attempts >= MAX_CHALLENGE_ATTEMPTS) {
+    throw httpError('errors.tooManyVerificationAttempts', 401)
+  }
   if (stored.expiresAt < new Date()) {
     await prisma.twoFactorChallenge.delete({ where: { id: stored.id } })
     throw httpError('errors.challengeExpired', 401)
@@ -166,38 +174,55 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
   // otplib's verify throws on non-numeric tokens (e.g. backup codes), so wrap it.
   let totpValid = false
   try {
-    const totpResult = await verify({ token: code, secret: user.twoFactorSecret })
+    const totpResult = await verify({ token: code, secret: decryptSecret(user.twoFactorSecret) })
     totpValid = totpResult.valid
   } catch {
     // Token format is invalid (not a 6-digit TOTP) — fall through to backup codes
   }
-  let backupUsed = false
 
+  // Check backup codes (matched hash is consumed after the challenge is claimed)
+  let matchedBackupHash = null
   if (!totpValid) {
-    // Check backup codes
     for (const hashed of user.twoFactorBackupCodes) {
       if (await bcrypt.compare(code, hashed)) {
-        backupUsed = true
-        // Remove the used backup code
-        const remaining = user.twoFactorBackupCodes.filter((h) => h !== hashed)
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { twoFactorBackupCodes: remaining },
-        })
+        matchedBackupHash = hashed
         break
       }
     }
   }
 
-  if (!totpValid && !backupUsed) {
+  if (!totpValid && !matchedBackupHash) {
+    // Count the failed attempt — the challenge becomes unusable after the cap
+    // so an attacker can't brute-force codes within the challenge window
+    const updated = await prisma.twoFactorChallenge.update({
+      where: { id: stored.id },
+      data: { attempts: { increment: 1 } },
+      select: { attempts: true },
+    })
+    if (updated.attempts >= MAX_CHALLENGE_ATTEMPTS) {
+      throw httpError('errors.tooManyVerificationAttempts', 401)
+    }
     throw httpError('errors.invalidVerificationCode', 401)
   }
 
-  // Mark challenge as used
-  await prisma.twoFactorChallenge.update({
-    where: { id: stored.id },
+  // Atomically claim the challenge — the `used: false` guard ensures only one
+  // of two concurrent requests can win, closing the check-then-mark race
+  const claimed = await prisma.twoFactorChallenge.updateMany({
+    where: { id: stored.id, used: false },
     data: { used: true },
   })
+  if (claimed.count === 0) throw httpError('errors.challengeAlreadyUsed', 401)
+
+  const backupUsed = !!matchedBackupHash
+  if (matchedBackupHash) {
+    // Remove the used backup code (safe: the challenge claim above guarantees
+    // only one concurrent request reaches this point)
+    const remaining = user.twoFactorBackupCodes.filter((h) => h !== matchedBackupHash)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { twoFactorBackupCodes: remaining },
+    })
+  }
 
   const safeUser = await prisma.user.update({
     where: { id: user.id },

@@ -2,6 +2,7 @@ import * as invitationService from './invitation.service.js'
 import { log as auditLog } from '../audit/audit.service.js'
 import { queueOrgInvitationEmail } from '../jobs/email.producer.js'
 import { translateResult } from '../../utils/i18nResponse.js'
+import logger from '../../utils/logger.js'
 
 export const createInvitation = async (req, res, next) => {
   try {
@@ -26,7 +27,9 @@ export const createInvitation = async (req, res, next) => {
       role: invitation.role,
       token,
       locale: req.lang,
-    })
+    }).catch((err) =>
+      logger.error({ err, invitationId: invitation.id }, 'Failed to enqueue invitation email'),
+    )
 
     res.status(201).json({ success: true, data: { invitation } })
   } catch (err) {

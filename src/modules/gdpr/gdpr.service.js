@@ -4,7 +4,23 @@ import { comparePassword } from '../../utils/hash.js'
 
 // ── Data Export ─────────────────────────────────────────────────────
 
-export const exportData = async (userId) => {
+export const exportData = async (userId, password) => {
+  const account = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { id: true, password: true },
+  })
+  if (!account) throw httpError('errors.userNotFound', 404)
+
+  // Re-authenticate before exporting everything — a stolen access token alone
+  // must not be enough to exfiltrate the full account. OAuth-only accounts
+  // have no password, so they are exempt (they can't do better without a
+  // fresh OAuth round-trip).
+  if (account.password) {
+    if (!password) throw httpError('errors.passwordIncorrect', 401)
+    const valid = await comparePassword(password, account.password)
+    if (!valid) throw httpError('errors.passwordIncorrect', 401)
+  }
+
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
     select: {

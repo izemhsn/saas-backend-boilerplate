@@ -15,11 +15,41 @@ import { createChallenge } from './twofa.service.js'
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
-export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days — must match JWT_REFRESH_EXPIRES_IN
+
+// Parse a duration string in jsonwebtoken's format (e.g. "7d", "12h", "15m",
+// "30s", or a plain number of milliseconds) into milliseconds. Falls back to
+// the provided default when the value is missing or unparseable.
+const DURATION_UNIT_MS = {
+  ms: 1,
+  s: 1000,
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+  w: 7 * 24 * 60 * 60 * 1000,
+  y: 365.25 * 24 * 60 * 60 * 1000,
+}
+const parseDurationMs = (value, fallbackMs) => {
+  const match = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i.exec(String(value ?? '').trim())
+  if (!match) return fallbackMs
+  return Number(match[1]) * DURATION_UNIT_MS[(match[2] ?? 'ms').toLowerCase()]
+}
+
+// Derived from JWT_REFRESH_EXPIRES_IN so the DB row expiry always matches the
+// JWT expiry (defaults to 7 days, same as utils/jwt.js).
+export const REFRESH_TOKEN_TTL_MS = parseDurationMs(
+  process.env.JWT_REFRESH_EXPIRES_IN,
+  7 * 24 * 60 * 60 * 1000,
+)
 const MAX_FAILED_ATTEMPTS = 5
 const LOCK_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 
 const normalizeEmail = (email) => email.trim().toLowerCase()
+
+// Dev/test convenience: include raw verification/reset tokens in API responses
+// so they can be used without a mail inbox. Fail-closed — tokens are only
+// exposed when NODE_ENV is explicitly 'development' or 'test', so a production
+// deployment that forgets to set NODE_ENV never leaks account-takeover tokens.
+const EXPOSE_DEV_TOKENS = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
 
 // Only select safe fields — password hash never leaves the DB
 const userSelect = {
@@ -95,7 +125,7 @@ export const register = async (
       tokenVersion,
     }),
     refreshToken,
-    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+    ...(EXPOSE_DEV_TOKENS && { emailVerificationToken }),
   }
 }
 
@@ -349,7 +379,7 @@ export const resendVerification = async ({ email }, { locale } = {}) => {
 
   return {
     messageKey: 'messages.verificationEmailSent',
-    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+    ...(EXPOSE_DEV_TOKENS && { emailVerificationToken }),
   }
 }
 
@@ -380,7 +410,7 @@ export const forgotPassword = async ({ email }, { locale } = {}) => {
 
   return {
     messageKey: 'messages.passwordResetTokenSent',
-    ...(process.env.NODE_ENV !== 'production' && { resetToken }),
+    ...(EXPOSE_DEV_TOKENS && { resetToken }),
   }
 }
 
@@ -481,7 +511,7 @@ export const changeEmail = async (userId, { newEmail, password }, { locale } = {
   })
   return {
     messageKey: 'messages.verificationEmailSentToNewAddress',
-    ...(process.env.NODE_ENV !== 'production' && { emailVerificationToken }),
+    ...(EXPOSE_DEV_TOKENS && { emailVerificationToken }),
   }
 }
 
@@ -562,15 +592,27 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
 
   // 3. No existing user — create a new one with Google
   if (!user) {
-    user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        name,
-        googleId,
-        emailVerified: true,
-      },
-      select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
-    })
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          name,
+          googleId,
+          emailVerified: true,
+        },
+        select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
+      })
+    } catch (err) {
+      // P2002 = unique constraint violation — a concurrent login already
+      // created this user (same email or googleId). Fall back to the
+      // existing record instead of failing.
+      if (!(err instanceof PrismaClientKnownRequestError && err.code === 'P2002')) throw err
+      user = await prisma.user.findFirst({
+        where: { OR: [{ googleId }, { email: normalizedEmail }], deletedAt: null },
+        select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
+      })
+      if (!user) throw err
+    }
   }
 
   if (user.banned) {

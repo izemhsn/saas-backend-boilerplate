@@ -39,9 +39,17 @@ if (process.env.TRUST_PROXY) {
 app.use(helmet()) // Secure HTTP headers
 app.use(compression({ threshold: 0 })) // Gzip compression for all responses
 
-// CORS — never default to wildcard in production
+// CORS — never default to wildcard in production.
+// CORS_ORIGIN may be a single origin or a comma-separated list (e.g.
+// "https://app.example.com,https://admin.example.com").
 const corsOrigin = process.env.CORS_ORIGIN ?? '*'
-const corsOptions = { origin: corsOrigin }
+const originList = corsOrigin
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+const corsOptions = {
+  origin: originList.length === 1 ? originList[0] : originList.length > 1 ? originList : '*',
+}
 if (corsOrigin !== '*') {
   corsOptions.credentials = true
 }
@@ -100,11 +108,14 @@ const skipInTest = () => process.env.NODE_ENV === 'test'
 
 // Each rate limiter needs its own RedisStore instance — express-rate-limit v7
 // rejects a shared store (ERR_ERL_STORE_REUSE). All stores reuse the same
-// ioredis connection but use distinct key prefixes so counters are isolated.
+// ioredis connection but use distinct key prefixes so counters are isolated
+// (without a prefix every limiter would share the default 'rl:' keyspace and
+// increment the same per-IP counter).
 // In test mode no store is created (rate limiting is skipped via `skipInTest`).
-const createRedisStore = () =>
+const createRedisStore = (prefix) =>
   process.env.NODE_ENV !== 'test'
     ? new RedisStore({
+        prefix,
         sendCommand: (...args) => getRedisConnection().call(...args),
       })
     : undefined
@@ -115,17 +126,21 @@ const authLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: createRedisStore(),
+  store: createRedisStore('rl:auth:'),
 })
 
-const sensitiveLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  skip: skipInTest,
-  store: createRedisStore(),
-})
+// Each sensitive route gets its own limiter (and Redis prefix) so a burst on
+// one endpoint (e.g. login retries) can't exhaust the budget of another
+// (e.g. refresh) for the same IP.
+const createSensitiveLimiter = (name) =>
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skip: skipInTest,
+    store: createRedisStore(`rl:sensitive:${name}:`),
+  })
 
 // Health checks — liveness (no DB, cheap) and readiness (DB ping).
 // Rate-limited to prevent abuse; load balancers should hit these at reasonable intervals.
@@ -135,7 +150,7 @@ const healthLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
-  store: createRedisStore(),
+  store: createRedisStore('rl:health:'),
 })
 
 app.get('/health', healthLimiter, (req, res) => {
@@ -152,17 +167,17 @@ app.get('/health/ready', healthLimiter, async (req, res) => {
 })
 
 app.use('/api/auth', authLimiter)
-app.post('/api/auth/login', sensitiveLimiter)
-app.post('/api/auth/register', sensitiveLimiter)
-app.post('/api/auth/refresh', sensitiveLimiter)
-app.post('/api/auth/verify-email', sensitiveLimiter)
-app.post('/api/auth/forgot-password', sensitiveLimiter)
-app.post('/api/auth/reset-password', sensitiveLimiter)
-app.post('/api/auth/resend-verification', sensitiveLimiter)
-app.post('/api/auth/change-password', sensitiveLimiter)
-app.post('/api/auth/change-email', sensitiveLimiter)
-app.post('/api/auth/google', sensitiveLimiter)
-app.post('/api/auth/2fa/verify', sensitiveLimiter)
+app.post('/api/auth/login', createSensitiveLimiter('login'))
+app.post('/api/auth/register', createSensitiveLimiter('register'))
+app.post('/api/auth/refresh', createSensitiveLimiter('refresh'))
+app.post('/api/auth/verify-email', createSensitiveLimiter('verify-email'))
+app.post('/api/auth/forgot-password', createSensitiveLimiter('forgot-password'))
+app.post('/api/auth/reset-password', createSensitiveLimiter('reset-password'))
+app.post('/api/auth/resend-verification', createSensitiveLimiter('resend-verification'))
+app.post('/api/auth/change-password', createSensitiveLimiter('change-password'))
+app.post('/api/auth/change-email', createSensitiveLimiter('change-email'))
+app.post('/api/auth/google', createSensitiveLimiter('google'))
+app.post('/api/auth/2fa/verify', createSensitiveLimiter('2fa-verify'))
 app.use('/api/auth', authRouter)
 
 app.use('/api/organizations', authLimiter)

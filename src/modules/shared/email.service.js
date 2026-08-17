@@ -7,6 +7,16 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 const FROM = process.env.FROM_EMAIL ?? 'noreply@example.com'
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
 
+// Escape user-derived values before interpolating them into email HTML so a
+// crafted name/org name can't inject markup into the message body.
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
 // Build the HTML email body from locale-specific template strings.
 // All text is pulled from the i18n locale files so emails are sent in the
 // user's preferred language.
@@ -31,7 +41,9 @@ export const sendVerificationEmail = async ({ to, token, name, locale = DEFAULT_
   const verifyUrl = `${APP_URL}/verify-email?token=${token}`
   const strings = {
     heading: translate('emails.verification.heading', locale),
-    greeting: translate('emails.verification.greeting', locale, { name: name ? ` ${name}` : '' }),
+    greeting: translate('emails.verification.greeting', locale, {
+      name: name ? ` ${escapeHtml(name)}` : '',
+    }),
     body: translate('emails.verification.body', locale),
     copyLink: translate('emails.verification.copyLink', locale),
     footer: translate('emails.verification.footer', locale),
@@ -63,7 +75,9 @@ export const sendPasswordResetEmail = async ({ to, token, name, locale = DEFAULT
   const resetUrl = `${APP_URL}/reset-password?token=${token}`
   const strings = {
     heading: translate('emails.passwordReset.heading', locale),
-    greeting: translate('emails.passwordReset.greeting', locale, { name: name ? ` ${name}` : '' }),
+    greeting: translate('emails.passwordReset.greeting', locale, {
+      name: name ? ` ${escapeHtml(name)}` : '',
+    }),
     body: translate('emails.passwordReset.body', locale),
     copyLink: translate('emails.passwordReset.copyLink', locale),
     footer: translate('emails.passwordReset.footer', locale),
@@ -101,9 +115,13 @@ export const sendOrgInvitationEmail = async ({
 }) => {
   const inviteUrl = `${APP_URL}/invitations/accept?token=${token}`
   const strings = {
-    heading: translate('emails.orgInvitation.heading', locale, { orgName }),
+    heading: translate('emails.orgInvitation.heading', locale, { orgName: escapeHtml(orgName) }),
     greeting: '',
-    body: translate('emails.orgInvitation.body', locale, { inviterName, orgName, role }),
+    body: translate('emails.orgInvitation.body', locale, {
+      inviterName: escapeHtml(inviterName),
+      orgName: escapeHtml(orgName),
+      role,
+    }),
     copyLink: translate('emails.orgInvitation.copyLink', locale),
     footer: translate('emails.orgInvitation.footer', locale),
   }

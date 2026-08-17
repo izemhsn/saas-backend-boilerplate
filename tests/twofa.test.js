@@ -3,6 +3,7 @@ import request from 'supertest'
 import { generate } from 'otplib'
 import app from '../src/app.js'
 import { prisma } from '../src/config/db.js'
+import { decryptSecret } from '../src/utils/secretCrypto.js'
 
 const RUN_ID = Date.now()
 const emailFor = (label) => `test-2fa-${label}-${RUN_ID}@example.com`
@@ -65,7 +66,7 @@ describe('Two-factor authentication', () => {
 
       // Enable
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -94,7 +95,7 @@ describe('Two-factor authentication', () => {
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
 
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
 
       const res = await request(app)
         .post('/api/auth/2fa/enable')
@@ -154,7 +155,7 @@ describe('Two-factor authentication', () => {
       // Setup + enable
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -181,7 +182,7 @@ describe('Two-factor authentication', () => {
 
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -217,7 +218,7 @@ describe('Two-factor authentication', () => {
 
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -239,7 +240,7 @@ describe('Two-factor authentication', () => {
 
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -249,7 +250,7 @@ describe('Two-factor authentication', () => {
       const challengeToken = loginRes.body.data.challengeToken
 
       // Generate a fresh TOTP code (the one used for enable may have rotated)
-      const freshCode = await generate({ secret: user.twoFactorSecret })
+      const freshCode = await generate({ secret: decryptSecret(user.twoFactorSecret) })
 
       const res = await request(app)
         .post('/api/auth/2fa/verify')
@@ -269,7 +270,7 @@ describe('Two-factor authentication', () => {
 
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       const enableRes = await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -300,7 +301,7 @@ describe('Two-factor authentication', () => {
 
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -332,7 +333,7 @@ describe('Two-factor authentication', () => {
 
       await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
       const user = await prisma.user.findFirst({ where: { email } })
-      const code = await generate({ secret: user.twoFactorSecret })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       await request(app)
         .post('/api/auth/2fa/enable')
         .set('Authorization', `Bearer ${token}`)
@@ -341,12 +342,12 @@ describe('Two-factor authentication', () => {
       const loginRes = await login(email)
       const challengeToken = loginRes.body.data.challengeToken
 
-      const freshCode = await generate({ secret: user.twoFactorSecret })
+      const freshCode = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       // First use — should succeed
       await request(app).post('/api/auth/2fa/verify').send({ challengeToken, code: freshCode })
 
       // Second use — should fail
-      const freshCode2 = await generate({ secret: user.twoFactorSecret })
+      const freshCode2 = await generate({ secret: decryptSecret(user.twoFactorSecret) })
       const res = await request(app)
         .post('/api/auth/2fa/verify')
         .send({ challengeToken, code: freshCode2 })

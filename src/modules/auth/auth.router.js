@@ -20,7 +20,7 @@ import {
   verifyTwoFactorSchema,
 } from './twofa.schema.js'
 import * as ctrl from './auth.controller.js'
-import { deleteAccountSchema } from '../gdpr/gdpr.schema.js'
+import { deleteAccountSchema, exportDataSchema } from '../gdpr/gdpr.schema.js'
 import * as gdprCtrl from '../gdpr/gdpr.controller.js'
 
 const router = Router()
@@ -51,7 +51,7 @@ router.post('/logout', authenticate, validate(logoutSchema), ctrl.logout)
 router.get('/me', authenticate, ctrl.getMe)
 
 // GDPR routes — data export and account deletion
-router.get('/data-export', authenticate, gdprCtrl.exportData)
+router.post('/data-export', authenticate, validate(exportDataSchema), gdprCtrl.exportData)
 router.delete('/account', authenticate, validate(deleteAccountSchema), gdprCtrl.deleteAccount)
 
 export default router

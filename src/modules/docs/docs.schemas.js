@@ -30,7 +30,7 @@ export const messageData = z.object({ message: z.string() })
 export const user = z.object({
   id: z.string(),
   name: z.string(),
-  email: z.string().email(),
+  email: z.email(),
   role: z.enum(['USER', 'ADMIN']),
   createdAt: isoDate,
 })
@@ -85,7 +85,7 @@ export const member = z.object({
   id: z.string(),
   role: z.enum(['OWNER', 'ADMIN', 'MEMBER']),
   createdAt: isoDate,
-  user: z.object({ id: z.string(), name: z.string(), email: z.string().email() }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.email() }),
 })
 
 // ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ export const auditLog = z.object({
 
 export const invitation = z.object({
   id: z.string(),
-  email: z.string().email(),
+  email: z.email(),
   role: z.enum(['ADMIN', 'MEMBER']),
   status: z.enum(['PENDING', 'ACCEPTED', 'DECLINED', 'CANCELED', 'EXPIRED']),
   expiresAt: isoDate,

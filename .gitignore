@@ -143,3 +143,6 @@ vite.config.ts.timestamp-*
 .vite/
 
 /src/generated/prisma
+
+# Test output logs
+test-output.log

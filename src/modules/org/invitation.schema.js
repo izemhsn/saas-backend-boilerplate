@@ -6,7 +6,7 @@ export const createInvitationSchema = z.object({
     orgId: z.string().min(1),
   }),
   body: z.object({
-    email: z.string().email('validation.validEmail'),
+    email: z.email('validation.validEmail'),
     role: z.enum(['ADMIN', 'MEMBER']).default('MEMBER'),
   }),
 })

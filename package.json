@@ -38,7 +38,7 @@
     "backend"
   ],
   "author": "izemhsn",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
   "bugs": {
     "url": "https://github.com/izemhsn/saas-backend-boilerplate/issues"
