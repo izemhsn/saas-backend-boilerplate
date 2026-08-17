@@ -49,8 +49,7 @@ const normalizeEmail = (email) => email.trim().toLowerCase()
 // so they can be used without a mail inbox. Fail-closed — tokens are only
 // exposed when NODE_ENV is explicitly 'development' or 'test', so a production
 // deployment that forgets to set NODE_ENV never leaks account-takeover tokens.
-const EXPOSE_DEV_TOKENS =
-  process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+const EXPOSE_DEV_TOKENS = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
 
 // Only select safe fields — password hash never leaves the DB
 const userSelect = {

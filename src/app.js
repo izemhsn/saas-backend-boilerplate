@@ -43,7 +43,10 @@ app.use(compression({ threshold: 0 })) // Gzip compression for all responses
 // CORS_ORIGIN may be a single origin or a comma-separated list (e.g.
 // "https://app.example.com,https://admin.example.com").
 const corsOrigin = process.env.CORS_ORIGIN ?? '*'
-const originList = corsOrigin.split(',').map((o) => o.trim()).filter(Boolean)
+const originList = corsOrigin
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
 const corsOptions = {
   origin: originList.length === 1 ? originList[0] : originList.length > 1 ? originList : '*',
 }

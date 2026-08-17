@@ -1,0 +1,9 @@
+# Configuration for GitHub issue templates
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/izemhsn/saas-backend-boilerplate/blob/main/SECURITY.md
+    about: Do not open public issues for security vulnerabilities. See SECURITY.md for responsible disclosure.
+  - name: Discussions
+    url: https://github.com/izemhsn/saas-backend-boilerplate/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.
