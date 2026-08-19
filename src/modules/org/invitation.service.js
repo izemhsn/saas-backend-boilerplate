@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from 'crypto'
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import { prisma } from '../../config/db.js'
 import { httpError } from '../../utils/httpError.js'
 import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
@@ -65,20 +66,29 @@ export const createInvitation = async (orgId, inviterId, { email, role }) => {
   }
 
   const token = randomBytes(32).toString('hex')
-  const invitation = await prisma.organizationInvitation.create({
-    data: {
-      organizationId: orgId,
-      inviterId,
-      inviteeEmail,
-      inviteeId: existingMember?.id ?? null,
-      role,
-      token: hashToken(token),
-      expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
-    },
-    select: invitationSelect,
-  })
-
-  return { invitation, token }
+  try {
+    const invitation = await prisma.organizationInvitation.create({
+      data: {
+        organizationId: orgId,
+        inviterId,
+        inviteeEmail,
+        inviteeId: existingMember?.id ?? null,
+        role,
+        token: hashToken(token),
+        expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
+      },
+      select: invitationSelect,
+    })
+    return { invitation, token }
+  } catch (err) {
+    // P2002 = the partial unique index on (organizationId, inviteeEmail)
+    // WHERE status = 'PENDING' fired — a concurrent request created the same
+    // pending invitation between our check and this insert.
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw httpError('errors.pendingInvitationExists', 409)
+    }
+    throw err
+  }
 }
 
 export const listInvitations = async (orgId, query = {}) => {

@@ -11,6 +11,32 @@ const prisma = new PrismaClient({
 
 const hashKey = (key) => createHash('sha256').update(key).digest('hex')
 
+// ── Safety guard ─────────────────────────────────────────────────────
+// This seed creates demo users with a known password (Password123) — running
+// it against a production database would plant a known admin credential.
+// Blocked in production unless SEED_ALLOW_PRODUCTION=true is set explicitly.
+if (process.env.NODE_ENV === 'production' && process.env.SEED_ALLOW_PRODUCTION !== 'true') {
+  console.error(
+    '❌ Refusing to seed: NODE_ENV is "production".\n' +
+      '   This seed creates demo accounts with a known password.\n' +
+      '   If you really mean to do this, set SEED_ALLOW_PRODUCTION=true.',
+  )
+  process.exit(1)
+}
+
+// NODE_ENV is often unset when running one-off scripts, so also warn when the
+// target database is not local — that's exactly when accidents happen.
+const dbHost = (() => {
+  try {
+    return new URL(process.env.DATABASE_URL ?? '').hostname
+  } catch {
+    return ''
+  }
+})()
+if (dbHost && !['localhost', '127.0.0.1', '::1'].includes(dbHost)) {
+  console.warn(`⚠️  Seeding a non-local database host: "${dbHost}" — make sure this is intended.\n`)
+}
+
 async function main() {
   console.log('🌱 Seeding database...\n')
 

@@ -93,7 +93,9 @@
     "failedToSendOrgInvitationEmail": "Échec de l'envoi de l'e-mail d'invitation : {message}",
     "accountLocked": "Compte temporairement verrouillé en raison de trop nombreuses tentatives échouées. Réessayez plus tard.",
     "emailAlreadyInUseChangeEmail": "Cette adresse e-mail est déjà utilisée. Veuillez demander un nouveau changement d'e-mail.",
-    "noPasswordSet": "Ce compte n'a pas de mot de passe défini. Veuillez définir un mot de passe avant de supprimer votre compte."
+    "noPasswordSet": "Ce compte n'a pas de mot de passe défini. Veuillez définir un mot de passe avant de supprimer votre compte.",
+    "resourceConflict": "Une ressource avec cette valeur existe déjà",
+    "resourceNotFound": "Ressource introuvable"
   },
   "messages": {
     "emailAlreadyVerified": "E-mail déjà vérifié",

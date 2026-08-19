@@ -1,3 +1,4 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import { prisma } from '../../config/db.js'
 import { httpError } from '../../utils/httpError.js'
 import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
@@ -27,19 +28,28 @@ export const createOrganization = async (userId, { name, slug }) => {
   })
   if (existing) throw httpError('errors.slugAlreadyTaken', 409)
 
-  const organization = await prisma.organization.create({
-    data: {
-      name: name.trim(),
-      slug,
-      ownerId: userId,
-      members: {
-        create: { userId, role: 'OWNER' },
+  try {
+    const organization = await prisma.organization.create({
+      data: {
+        name: name.trim(),
+        slug,
+        ownerId: userId,
+        members: {
+          create: { userId, role: 'OWNER' },
+        },
       },
-    },
-    select: orgSelect,
-  })
-
-  return { organization }
+      select: orgSelect,
+    })
+    return { organization }
+  } catch (err) {
+    // P2002 = unique constraint violation. The pre-check above ignores
+    // soft-deleted orgs, but the DB unique constraint on slug covers them
+    // (and concurrent creates) — return a clean 409 instead of a 500.
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw httpError('errors.slugAlreadyTaken', 409)
+    }
+    throw err
+  }
 }
 
 export const listOrganizations = async (userId, query = {}) => {
@@ -95,13 +105,19 @@ export const updateOrganization = async (orgId, { name, slug }) => {
   if (name !== undefined) data.name = name.trim()
   if (slug !== undefined) data.slug = slug
 
-  const organization = await prisma.organization.update({
-    where: { id: orgId },
-    data,
-    select: orgSelect,
-  })
-
-  return { organization }
+  try {
+    const organization = await prisma.organization.update({
+      where: { id: orgId },
+      data,
+      select: orgSelect,
+    })
+    return { organization }
+  } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw httpError('errors.slugAlreadyTaken', 409)
+    }
+    throw err
+  }
 }
 
 export const deleteOrganization = async (orgId) => {
