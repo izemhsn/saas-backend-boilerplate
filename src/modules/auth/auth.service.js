@@ -96,16 +96,28 @@ export const register = async (
 
   const emailVerificationToken = randomBytes(32).toString('hex')
 
-  const { tokenVersion, ...user } = await prisma.user.create({
-    data: {
-      name: name.trim(),
-      email: normalizedEmail,
-      password: await hashPassword(password),
-      emailVerificationToken: hashToken(emailVerificationToken),
-      emailVerificationExpires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
-    },
-    select: { ...userSelect, tokenVersion: true },
-  })
+  let created
+  try {
+    created = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: normalizedEmail,
+        password: await hashPassword(password),
+        emailVerificationToken: hashToken(emailVerificationToken),
+        emailVerificationExpires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
+      },
+      select: { ...userSelect, tokenVersion: true },
+    })
+  } catch (err) {
+    // P2002 = unique constraint violation. The pre-check above only looks at
+    // non-deleted users, but the DB constraint also covers soft-deleted rows
+    // (and concurrent registrations) — surface a clean 409 instead of a 500.
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw httpError('errors.emailAlreadyRegistered', 409)
+    }
+    throw err
+  }
+  const { tokenVersion, ...user } = created
 
   const refreshToken = await createRefreshTokenRecord(user.id, { userAgent, ipAddress })
 
@@ -430,16 +442,24 @@ export const resetPassword = async ({ token, newPassword }) => {
     throw httpError('errors.invalidOrExpiredResetToken', 400)
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      password: await hashPassword(newPassword),
-      passwordResetToken: null,
-      passwordResetExpires: null,
-      tokenVersion: { increment: 1 },
-    },
-  })
-  await revokeAllRefreshTokens(user.id)
+  // Atomic: the new password, token-version bump, and refresh-token revocation
+  // must land together — otherwise a failure in between leaves old refresh
+  // tokens valid after the password was already changed.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: await hashPassword(newPassword),
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        tokenVersion: { increment: 1 },
+      },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId: user.id, revoked: false },
+      data: { revoked: true },
+    }),
+  ])
 
   return { messageKey: 'messages.passwordResetSuccess' }
 }
@@ -459,11 +479,18 @@ export const changePassword = async (userId, { currentPassword, newPassword }) =
   const samePassword = await comparePassword(newPassword, user.password)
   if (samePassword) throw httpError('errors.newPasswordMustDiffer', 400)
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { password: await hashPassword(newPassword), tokenVersion: { increment: 1 } },
-  })
-  await revokeAllRefreshTokens(userId)
+  // Atomic for the same reason as resetPassword — password change and session
+  // invalidation must not be separable.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { password: await hashPassword(newPassword), tokenVersion: { increment: 1 } },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    }),
+  ])
   return { messageKey: 'messages.passwordChangedSuccess' }
 }
 

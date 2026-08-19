@@ -93,7 +93,9 @@
     "failedToSendOrgInvitationEmail": "Failed to send org invitation email: {message}",
     "accountLocked": "Account temporarily locked due to too many failed attempts. Try again later.",
     "emailAlreadyInUseChangeEmail": "This email address is already in use. Please request a new change email.",
-    "noPasswordSet": "This account has no password set. Please set a password before deleting your account."
+    "noPasswordSet": "This account has no password set. Please set a password before deleting your account.",
+    "resourceConflict": "A resource with this value already exists",
+    "resourceNotFound": "Resource not found"
   },
   "messages": {
     "emailAlreadyVerified": "Email already verified",

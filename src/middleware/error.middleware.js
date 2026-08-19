@@ -1,10 +1,27 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import logger from '../utils/logger.js'
 import { getSentry } from '../config/sentry.js'
 import { t as translate, DEFAULT_LOCALE } from '../i18n/index.js'
 
+// Known Prisma errors that services didn't handle themselves are mapped to
+// proper HTTP responses instead of leaking as raw 500s:
+//   P2002 — unique constraint violation → 409 Conflict
+//   P2025 — record required but not found → 404 Not Found
+const mapPrismaError = (err) => {
+  if (!(err instanceof PrismaClientKnownRequestError)) return null
+  if (err.code === 'P2002') return { statusCode: 409, key: 'errors.resourceConflict' }
+  if (err.code === 'P2025') return { statusCode: 404, key: 'errors.resourceNotFound' }
+  return null
+}
+
 // 4-parameter signature = Express recognizes this as error middleware
 // (_next is required to keep the arity even though it is unused)
 export const errorHandler = (err, req, res, _next) => {
+  const prismaMapped = err.statusCode === undefined ? mapPrismaError(err) : null
+  if (prismaMapped) {
+    err.statusCode = prismaMapped.statusCode
+    err.i18n = { key: prismaMapped.key, params: {} }
+  }
   const statusCode = err.statusCode ?? 500
   const isProduction = process.env.NODE_ENV === 'production'
 

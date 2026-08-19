@@ -12,10 +12,20 @@ export const authenticate = async (req, res, next) => {
     })
   }
 
+  // Only JWT verification failures map to 401 — a DB outage below must surface
+  // as a 500 through the error handler, not masquerade as an invalid token.
+  let decoded
   try {
     const token = authHeader.split(' ')[1]
-    const decoded = verifyToken(token) // { id, email, role, tokenVersion }
+    decoded = verifyToken(token) // { id, email, role, tokenVersion }
+  } catch {
+    return res.status(401).json({
+      success: false,
+      message: req.t('errors.invalidOrExpiredToken'),
+    })
+  }
 
+  try {
     // Verify the user still exists and the token version matches
     const user = await prisma.user.findFirst({
       where: { id: decoded.id, deletedAt: null },
@@ -57,11 +67,8 @@ export const authenticate = async (req, res, next) => {
       tokenVersion: user.tokenVersion,
     }
     next()
-  } catch {
-    res.status(401).json({
-      success: false,
-      message: req.t('errors.invalidOrExpiredToken'),
-    })
+  } catch (err) {
+    next(err)
   }
 }
 
