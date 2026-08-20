@@ -158,12 +158,14 @@ export const googleLogin = async (req, res, next) => {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     })
-    auditLog('USER_OAUTH_LOGIN', {
-      userId: data.user.id,
-      metadata: { provider: 'google' },
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    })
+    if (!data.twoFactorRequired) {
+      auditLog('USER_OAUTH_LOGIN', {
+        userId: data.user.id,
+        metadata: { provider: 'google' },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
+    }
     res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)

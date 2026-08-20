@@ -202,6 +202,141 @@ describe('POST /api/auth/google', () => {
     expect(res.body.message).toMatch(/Google/)
   })
 
+  // H1 — Google only guarantees the `email` claim when `email_verified` is
+  // true. Because a matching email links this identity onto an existing local
+  // account, accepting an unverified claim would be an account-takeover path.
+  it('rejects a Google profile whose email is not verified', async () => {
+    const googleId = `google-unverified-${RUN_ID}`
+    const googleEmail = emailFor('google-unverified')
+    createdGoogleIds.push(googleId)
+    createdEmails.push(googleEmail)
+
+    currentPayload = {
+      sub: googleId,
+      email: googleEmail,
+      email_verified: false,
+      name: 'Unverified Google User',
+    }
+
+    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+
+    expect(res.status).toBe(401)
+    expect(res.body.success).toBe(false)
+    expect(res.body.message).toMatch(/not verified/i)
+
+    // No account may be created from an unverified claim
+    const dbUser = await prisma.user.findUnique({ where: { email: googleEmail } })
+    expect(dbUser).toBeNull()
+  })
+
+  it('rejects a Google profile with email_verified missing entirely', async () => {
+    const googleId = `google-noverif-${RUN_ID}`
+    const googleEmail = emailFor('google-noverif')
+    createdGoogleIds.push(googleId)
+    createdEmails.push(googleEmail)
+
+    currentPayload = { sub: googleId, email: googleEmail, name: 'No Verif Claim' }
+
+    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+
+    expect(res.status).toBe(401)
+    expect(res.body.message).toMatch(/not verified/i)
+  })
+
+  it('does not link an unverified Google email onto an existing password account', async () => {
+    const googleId = `google-takeover-${RUN_ID}`
+    const victimEmail = emailFor('google-takeover')
+    createdGoogleIds.push(googleId)
+    createdEmails.push(victimEmail)
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Victim', email: victimEmail, password: VALID_PASSWORD })
+
+    // Attacker-controlled Google identity asserting the victim's address
+    currentPayload = {
+      sub: googleId,
+      email: victimEmail,
+      email_verified: false,
+      name: 'Attacker',
+    }
+
+    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+
+    expect(res.status).toBe(401)
+
+    // The victim's account must be untouched — no googleId linked
+    const dbUser = await prisma.user.findUnique({
+      where: { email: victimEmail },
+      select: { googleId: true },
+    })
+    expect(dbUser.googleId).toBeNull()
+  })
+
+  // C1 — Google sign-in must not be a second-factor bypass.
+  it('returns a 2FA challenge instead of tokens when the user has 2FA enabled', async () => {
+    const googleId = `google-2fa-${RUN_ID}`
+    const googleEmail = emailFor('google-2fa')
+    createdGoogleIds.push(googleId)
+    createdEmails.push(googleEmail)
+
+    currentPayload = {
+      sub: googleId,
+      email: googleEmail,
+      email_verified: true,
+      name: '2FA Google User',
+    }
+
+    // First sign-in creates the account and returns tokens
+    const first = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    expect(first.status).toBe(200)
+    expect(first.body.data.token).toBeTypeOf('string')
+
+    // Turn on 2FA directly in the DB — this test is about the OAuth gate, not
+    // the enrolment flow (covered in twofa.test.js)
+    await prisma.user.update({
+      where: { id: first.body.data.user.id },
+      data: { twoFactorEnabled: true, twoFactorSecret: 'JBSWY3DPEHPK3PXP' },
+    })
+
+    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.twoFactorRequired).toBe(true)
+    expect(res.body.data.challengeToken).toBeTypeOf('string')
+    // Crucially: no usable credentials are issued
+    expect(res.body.data.token).toBeUndefined()
+    expect(res.body.data.refreshToken).toBeUndefined()
+    expect(res.body.data.user).toBeUndefined()
+  })
+
+  it('still enforces the ban check ahead of the 2FA challenge', async () => {
+    const googleId = `google-2fa-banned-${RUN_ID}`
+    const googleEmail = emailFor('google-2fa-banned')
+    createdGoogleIds.push(googleId)
+    createdEmails.push(googleEmail)
+
+    currentPayload = {
+      sub: googleId,
+      email: googleEmail,
+      email_verified: true,
+      name: 'Banned 2FA User',
+    }
+
+    const first = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    expect(first.status).toBe(200)
+
+    await prisma.user.update({
+      where: { id: first.body.data.user.id },
+      data: { twoFactorEnabled: true, twoFactorSecret: 'JBSWY3DPEHPK3PXP', banned: true },
+    })
+
+    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+
+    expect(res.status).toBe(403)
+    expect(res.body.message).toMatch(/banned/)
+  })
+
   it('rejects banned user from Google login', async () => {
     const googleId = `google-banned-${RUN_ID}`
     const googleEmail = emailFor('google-banned')

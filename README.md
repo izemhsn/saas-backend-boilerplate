@@ -46,7 +46,7 @@ A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, G
 | Validation    | Zod 4                                                      |
 | Logging       | Pino + pino-http                                           |
 | Monitoring    | Sentry                                                     |
-| Testing       | Vitest + Supertest (378 integration tests)                 |
+| Testing       | Vitest + Supertest (387 integration tests)                 |
 | Linting       | ESLint 9 + Prettier                                        |
 | Container     | Docker (multi-stage, non-root)                             |
 | CI/CD         | GitHub Actions (lint → test → build → deploy)              |
