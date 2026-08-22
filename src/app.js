@@ -25,7 +25,7 @@ import docsRouter from './modules/docs/docs.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
 import { RedisStore } from 'rate-limit-redis'
-import { getRedisConnection } from './config/redis.js'
+import { getRateLimitRedisConnection } from './config/redis.js'
 
 const app = express()
 
@@ -108,24 +108,60 @@ const skipInTest = () => process.env.NODE_ENV === 'test'
 
 // Each rate limiter needs its own RedisStore instance — express-rate-limit v7
 // rejects a shared store (ERR_ERL_STORE_REUSE). All stores reuse the same
-// ioredis connection but use distinct key prefixes so counters are isolated
-// (without a prefix every limiter would share the default 'rl:' keyspace and
-// increment the same per-IP counter).
+// dedicated rate-limit ioredis connection (see config/redis.js — deliberately
+// NOT the BullMQ connection, which is tuned to retry indefinitely) but use
+// distinct key prefixes so counters are isolated (without a prefix every
+// limiter would share the default 'rl:' keyspace and increment the same
+// per-IP counter).
 // In test mode no store is created (rate limiting is skipped via `skipInTest`).
-const createRedisStore = (prefix) =>
-  process.env.NODE_ENV !== 'test'
-    ? new RedisStore({
-        prefix,
-        sendCommand: (...args) => getRedisConnection().call(...args),
-      })
-    : undefined
+const createRedisStore = (prefix) => {
+  if (process.env.NODE_ENV === 'test') return undefined
 
+  const store = new RedisStore({
+    prefix,
+    sendCommand: async (...args) => {
+      try {
+        return await getRateLimitRedisConnection().call(...args)
+      } catch (err) {
+        // Logged here (not just left to the connection's own 'error'
+        // listener) so a fail-open event is tied to the request it
+        // affected. `passOnStoreError: true` below lets the request
+        // through once this rejection propagates.
+        logger.warn({ err }, 'Rate limiter Redis command failed — request allowed unthrottled')
+        throw err
+      }
+    },
+  })
+
+  // RedisStore's constructor eagerly fires SCRIPT LOAD commands and stores
+  // the resulting promises (incrementScriptSha/getScriptSha) without
+  // awaiting them — they're only awaited later, inside increment(), when the
+  // first request through this limiter arrives. If Redis is unreachable at
+  // process startup and no request arrives before those commands time out,
+  // Node reports the rejection as an unhandledRejection, and server.js
+  // treats ANY unhandledRejection as fatal and shuts the process down. A
+  // no-op catch here closes that gap — a Redis outage at boot can no longer
+  // crash the server before it has served a single request. The real
+  // failure is still surfaced per-request via passOnStoreError once a
+  // request actually calls increment().
+  store.incrementScriptSha?.catch(() => {})
+  store.getScriptSha?.catch(() => {})
+
+  return store
+}
+
+// passOnStoreError: true — if Redis is unreachable, let the request through
+// rather than reject it or hang. Availability of the API takes priority over
+// rate limiting for the (hopefully brief) window Redis is degraded; the
+// dedicated fail-fast connection above keeps that window small (~1s) instead
+// of the ~10-20s a shared BullMQ-tuned connection would take to give up.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 100,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
+  passOnStoreError: true,
   store: createRedisStore('rl:auth:'),
 })
 
@@ -139,6 +175,7 @@ const createSensitiveLimiter = (name) =>
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     skip: skipInTest,
+    passOnStoreError: true,
     store: createRedisStore(`rl:sensitive:${name}:`),
   })
 
@@ -150,6 +187,7 @@ const healthLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: skipInTest,
+  passOnStoreError: true,
   store: createRedisStore('rl:health:'),
 })
 

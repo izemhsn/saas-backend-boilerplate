@@ -60,6 +60,17 @@ const userSelect = {
   createdAt: true,
 }
 
+// Safe fields plus the account-state flags every login gate depends on.
+// `twoFactorEnabled` is part of this shape so no login path can forget it and
+// silently skip the second factor.
+const loginUserSelect = {
+  ...userSelect,
+  tokenVersion: true,
+  banned: true,
+  suspendedUntil: true,
+  twoFactorEnabled: true,
+}
+
 // Create a refresh token record in the DB and return the raw token
 export const createRefreshTokenRecord = async (userId, { userAgent, ipAddress } = {}) => {
   const refreshToken = signRefreshToken({ sub: userId })
@@ -583,6 +594,15 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
     throw httpError('errors.googleNoProfileInfo', 400)
   }
 
+  // Fail closed on an unverified address. Google only guarantees the `email`
+  // claim when `email_verified` is true, and step 2 below links this identity
+  // onto an existing local account purely by email match — so trusting an
+  // unverified claim would hand that account to anyone able to make a Google
+  // identity assert the victim's address.
+  if (payload.email_verified !== true) {
+    throw httpError('errors.googleEmailNotVerified', 401)
+  }
+
   const googleId = payload.sub
   const normalizedEmail = normalizeEmail(payload.email)
   const name = payload.name ?? null
@@ -590,20 +610,14 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
   // 1. User already linked to this Google account — log them in
   let user = await prisma.user.findFirst({
     where: { googleId, deletedAt: null },
-    select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
+    select: loginUserSelect,
   })
 
   // 2. No googleId match, but email exists — link the Google account
   if (!user) {
     user = await prisma.user.findFirst({
       where: { email: normalizedEmail, deletedAt: null },
-      select: {
-        ...userSelect,
-        tokenVersion: true,
-        banned: true,
-        suspendedUntil: true,
-        googleId: true,
-      },
+      select: { ...loginUserSelect, googleId: true },
     })
     if (user) {
       if (user.googleId && user.googleId !== googleId) {
@@ -612,7 +626,7 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
       user = await prisma.user.update({
         where: { id: user.id },
         data: { googleId, emailVerified: true },
-        select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
+        select: loginUserSelect,
       })
     }
   }
@@ -627,7 +641,7 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
           googleId,
           emailVerified: true,
         },
-        select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
+        select: loginUserSelect,
       })
     } catch (err) {
       // P2002 = unique constraint violation — a concurrent login already
@@ -636,7 +650,7 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
       if (!(err instanceof PrismaClientKnownRequestError && err.code === 'P2002')) throw err
       user = await prisma.user.findFirst({
         where: { OR: [{ googleId }, { email: normalizedEmail }], deletedAt: null },
-        select: { ...userSelect, tokenVersion: true, banned: true, suspendedUntil: true },
+        select: loginUserSelect,
       })
       if (!user) throw err
     }
@@ -648,6 +662,14 @@ export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
 
   if (user.suspendedUntil && user.suspendedUntil > new Date()) {
     throw httpError('errors.accountSuspended', 403, { until: user.suspendedUntil.toISOString() })
+  }
+
+  // Second factor is mandatory here too — mirroring the password login flow.
+  // Without this gate a user who enabled 2FA could skip it entirely just by
+  // signing in with a linked Google account.
+  if (user.twoFactorEnabled) {
+    const challengeToken = await createChallenge(user.id)
+    return { twoFactorRequired: true, challengeToken }
   }
 
   const { tokenVersion, ...safeUser } = await prisma.user.update({

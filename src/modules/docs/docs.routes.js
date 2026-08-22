@@ -224,10 +224,10 @@ export const operations = [
     tag: 'Auth',
     summary: 'Log in with Google',
     description:
-      'Exchanges a Google authorization code for tokens. Links to an existing account when emails match.',
+      'Exchanges a Google authorization code for tokens. Links to an existing account when emails match, but only when Google reports the address as verified — an unverified address is rejected with 401. When 2FA is enabled, returns `twoFactorRequired: true` with a challenge token instead of JWTs, exactly like password login.',
     security: null,
     request: googleLoginSchema,
-    responses: { ...ok(s.authTokens, 'Tokens issued'), ...errors(400, 401) },
+    responses: { ...ok(s.loginData, 'Tokens or 2FA challenge'), ...errors(400, 401, 403) },
   },
   {
     method: 'POST',

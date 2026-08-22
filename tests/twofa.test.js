@@ -295,6 +295,37 @@ describe('Two-factor authentication', () => {
       expect(updated.twoFactorBackupCodes).toHaveLength(9)
     }, 30000)
 
+    it('accepts a TOTP code from the previous 30s step (clock skew tolerance)', async () => {
+      const { email, res: reg } = await registerUser('verify-skew')
+      const token = reg.body.data.token
+
+      await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
+      const user = await prisma.user.findFirst({ where: { email } })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+      await request(app)
+        .post('/api/auth/2fa/enable')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code })
+
+      const loginRes = await login(email)
+      const challengeToken = loginRes.body.data.challengeToken
+
+      // Generate a code for 40s ago — one 30s TOTP step in the past, well
+      // outside the exact-window match a bare epochTolerance:0 would require.
+      const staleCode = await generate({
+        secret: decryptSecret(user.twoFactorSecret),
+        epoch: Math.floor(Date.now() / 1000) - 40,
+      })
+
+      const res = await request(app)
+        .post('/api/auth/2fa/verify')
+        .send({ challengeToken, code: staleCode })
+
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.data.token).toBeTypeOf('string')
+    }, 30000)
+
     it('rejects verify with invalid TOTP code', async () => {
       const { email, res: reg } = await registerUser('verify-invalid')
       const token = reg.body.data.token

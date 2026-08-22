@@ -15,6 +15,12 @@ const BACKUP_CODE_COUNT = 10
 // per successful password login, independent of IP-based rate limiting.
 const MAX_CHALLENGE_ATTEMPTS = 5
 const ISSUER = process.env.APP_NAME || 'SaaS Boilerplate'
+// otplib's `epochTolerance` is in *seconds*, not time-steps — [30, 0] buys one
+// past 30s period of slack (RFC 6238 recommends past-only tolerance, since
+// future tolerance lets an attacker pre-compute a code before its window
+// opens). Without this, a code is only valid for its exact current 30s step,
+// so any client clock skew or a code typed late in its window is rejected.
+const TOTP_EPOCH_TOLERANCE = [30, 0]
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -64,7 +70,11 @@ export const enable = async (userId, { code }) => {
 
   let valid = false
   try {
-    const result = await verify({ token: code, secret: decryptSecret(user.twoFactorSecret) })
+    const result = await verify({
+      token: code,
+      secret: decryptSecret(user.twoFactorSecret),
+      epochTolerance: TOTP_EPOCH_TOLERANCE,
+    })
     valid = result.valid
   } catch {
     // Invalid token format
@@ -174,7 +184,11 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
   // otplib's verify throws on non-numeric tokens (e.g. backup codes), so wrap it.
   let totpValid = false
   try {
-    const totpResult = await verify({ token: code, secret: decryptSecret(user.twoFactorSecret) })
+    const totpResult = await verify({
+      token: code,
+      secret: decryptSecret(user.twoFactorSecret),
+      epochTolerance: TOTP_EPOCH_TOLERANCE,
+    })
     totpValid = totpResult.valid
   } catch {
     // Token format is invalid (not a 6-digit TOTP) — fall through to backup codes

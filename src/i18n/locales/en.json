@@ -21,6 +21,7 @@
     "googleNotConfigured": "Google OAuth is not configured",
     "googleAuthFailed": "Failed to authenticate with Google",
     "googleNoProfileInfo": "Google did not return required profile information",
+    "googleEmailNotVerified": "Your Google account email is not verified. Verify it with Google and try again.",
     "emailLinkedToAnotherGoogle": "This email is already linked to another Google account",
     "twoFactorAlreadyEnabled": "Two-factor authentication is already enabled",
     "twoFactorNotEnabled": "Two-factor authentication is not enabled",
