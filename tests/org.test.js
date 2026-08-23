@@ -450,6 +450,112 @@ describe('PATCH /api/organizations/:orgId/members/:userId', () => {
   })
 })
 
+describe('POST /api/organizations/:orgId/transfer-ownership', () => {
+  it('hands ownership to an existing member and demotes the current owner', async () => {
+    const { res: ownerRes } = await registerUser('transfer-owner')
+    const { res: memberRes } = await registerUser('transfer-member')
+    const ownerToken = ownerRes.body.data.token
+    const ownerUserId = ownerRes.body.data.user.id
+    const memberUserId = memberRes.body.data.user.id
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Transfer Org', slug: `transfer-org-${RUN_ID}` })
+    const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    await prisma.organizationMember.create({
+      data: { organizationId: orgId, userId: memberUserId, role: 'MEMBER' },
+    })
+
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/transfer-ownership`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ newOwnerId: memberUserId })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.organization.ownerId).toBe(memberUserId)
+
+    const newOwnerMembership = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: orgId, userId: memberUserId } },
+    })
+    expect(newOwnerMembership.role).toBe('OWNER')
+
+    const oldOwnerMembership = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: orgId, userId: ownerUserId } },
+    })
+    expect(oldOwnerMembership.role).toBe('ADMIN')
+  })
+
+  it('rejects transferring to a non-member', async () => {
+    const { res: ownerRes } = await registerUser('transfer-nonmember-owner')
+    const { res: outsiderRes } = await registerUser('transfer-nonmember-outsider')
+    const ownerToken = ownerRes.body.data.token
+    const outsiderUserId = outsiderRes.body.data.user.id
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Transfer Nonmember Org', slug: `transfer-nonmember-${RUN_ID}` })
+    const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/transfer-ownership`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ newOwnerId: outsiderUserId })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('rejects transferring to self', async () => {
+    const { res: ownerRes } = await registerUser('transfer-self')
+    const ownerToken = ownerRes.body.data.token
+    const ownerUserId = ownerRes.body.data.user.id
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Transfer Self Org', slug: `transfer-self-${RUN_ID}` })
+    const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/transfer-ownership`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ newOwnerId: ownerUserId })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects non-OWNER callers', async () => {
+    const { res: ownerRes } = await registerUser('transfer-forbidden-owner')
+    const { res: adminRes } = await registerUser('transfer-forbidden-admin')
+    const ownerToken = ownerRes.body.data.token
+    const adminToken = adminRes.body.data.token
+    const adminUserId = adminRes.body.data.user.id
+
+    const createRes = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Transfer Forbidden Org', slug: `transfer-forbidden-${RUN_ID}` })
+    const orgId = createRes.body.data.organization.id
+    createdOrgIds.push(orgId)
+
+    await prisma.organizationMember.create({
+      data: { organizationId: orgId, userId: adminUserId, role: 'ADMIN' },
+    })
+
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/transfer-ownership`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ newOwnerId: adminUserId })
+
+    expect(res.status).toBe(403)
+  })
+})
+
 describe('DELETE /api/organizations/:orgId/members/:userId', () => {
   it('removes a member', async () => {
     const { res: ownerRes } = await registerUser('remove-owner')

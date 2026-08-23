@@ -14,6 +14,7 @@ import {
   removeMemberSchema,
   listOrgsSchema,
   listMembersSchema,
+  transferOwnershipSchema,
 } from './org.schema.js'
 import {
   createInvitationSchema,
@@ -54,6 +55,13 @@ router.post(
   requireTenantIncludeDeleted,
   requireOrgRole('OWNER'),
   ctrl.restoreOrganization,
+)
+router.post(
+  '/:orgId/transfer-ownership',
+  validate(transferOwnershipSchema),
+  requireTenant,
+  requireOrgRole('OWNER'),
+  ctrl.transferOwnership,
 )
 
 // Members

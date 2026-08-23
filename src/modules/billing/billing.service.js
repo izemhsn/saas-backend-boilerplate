@@ -1,7 +1,10 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import { prisma } from '../../config/db.js'
 import { stripe, isStripeConfigured } from '../../config/stripe.js'
 import { httpError } from '../../utils/httpError.js'
 import { paginationParams, paginationMeta, parseSort } from '../../utils/query.js'
+import { log as auditLog } from '../audit/audit.service.js'
+import logger from '../../utils/logger.js'
 
 const planSelect = {
   id: true,
@@ -197,58 +200,118 @@ export const handleWebhook = async (rawBody, signature) => {
     throw httpError('errors.webhookSignatureFailed', 400, { message: err.message })
   }
 
+  // Idempotency — Stripe's delivery guarantee is at-least-once, so the same
+  // event can arrive more than once (a retry after a slow 200, or a manual
+  // resend from the dashboard). Insert the event id first and skip
+  // processing entirely on a P2002: this makes reprocessing a no-op instead
+  // of a second (possibly conflicting) write.
+  try {
+    await prisma.processedWebhookEvent.create({
+      data: { id: event.id, type: event.type },
+    })
+  } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      logger.info({ eventId: event.id, type: event.type }, 'Duplicate Stripe webhook event skipped')
+      return { received: true, type: event.type }
+    }
+    throw err
+  }
+
   switch (event.type) {
     case 'checkout.session.completed':
-      await handleCheckoutCompleted(event.data.object)
+      await handleCheckoutCompleted(event.data.object, event.id, event.created)
       break
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
-      await handleSubscriptionUpdated(event.data.object)
+      await handleSubscriptionUpdated(event.data.object, event.id, event.created)
       break
     case 'customer.subscription.deleted':
       await handleSubscriptionDeleted(event.data.object)
       break
     default:
+      logger.info({ eventId: event.id, type: event.type }, 'Unhandled Stripe webhook event type')
       break
   }
 
   return { received: true, type: event.type }
 }
 
-const handleCheckoutCompleted = async (session) => {
+const handleCheckoutCompleted = async (session, eventId, eventCreated) => {
   const { userId, planId } = session.metadata ?? {}
-  if (!userId || !planId) return
+  if (!userId || !planId) {
+    logger.warn(
+      { eventId, sessionId: session.id },
+      'checkout.session.completed missing userId/planId metadata — skipped',
+    )
+    return
+  }
 
   const stripeSubscriptionId = session.subscription
-  if (!stripeSubscriptionId) return
+  if (!stripeSubscriptionId) {
+    logger.warn(
+      { eventId, userId, sessionId: session.id },
+      'checkout.session.completed has no subscription id — skipped',
+    )
+    return
+  }
 
   const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId)
-  await upsertSubscription(userId, planId, stripeSub)
+  await upsertSubscription(userId, planId, stripeSub, eventCreated)
 }
 
-const handleSubscriptionUpdated = async (stripeSub) => {
+const handleSubscriptionUpdated = async (stripeSub, eventId, eventCreated) => {
   const { userId, planId } = stripeSub.metadata ?? {}
-  if (!userId || !planId) return
+  if (!userId || !planId) {
+    logger.warn(
+      { eventId, stripeSubscriptionId: stripeSub.id },
+      'Subscription event missing userId/planId metadata — skipped',
+    )
+    return
+  }
 
-  await upsertSubscription(userId, planId, stripeSub)
+  await upsertSubscription(userId, planId, stripeSub, eventCreated)
 }
 
 const handleSubscriptionDeleted = async (stripeSub) => {
-  await prisma.subscription.updateMany({
+  // Read the owning user first (needed for the audit log) — updateMany
+  // alone doesn't return the rows it touched.
+  const existing = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId: stripeSub.id },
+    select: { userId: true },
+  })
+
+  const result = await prisma.subscription.updateMany({
     where: { stripeSubscriptionId: stripeSub.id },
     data: { status: 'CANCELED', canceledAt: new Date() },
   })
+
+  if (result.count > 0 && existing) {
+    auditLog('SUBSCRIPTION_CANCELED', {
+      userId: existing.userId,
+      metadata: { stripeSubscriptionId: stripeSub.id, source: 'webhook' },
+    })
+  }
 }
 
-const upsertSubscription = async (userId, planId, stripeSub) => {
+const upsertSubscription = async (userId, planId, stripeSub, eventCreated) => {
   const plan = await prisma.plan.findUnique({ where: { id: planId }, select: { id: true } })
-  if (!plan) return
+  if (!plan) {
+    logger.warn(
+      { stripeSubscriptionId: stripeSub.id, planId },
+      'Webhook references an unknown planId — skipped',
+    )
+    return
+  }
 
   // Stripe moved current_period_start/end to subscription items in newer API versions.
   // Fall back to the first item if the top-level fields are absent.
   const item = stripeSub.items?.data?.[0]
   const periodStart = stripeSub.current_period_start ?? item?.current_period_start
   const periodEnd = stripeSub.current_period_end ?? item?.current_period_end
+
+  // Falls back to "now" for events that (unusually) carry no `created`
+  // timestamp, so the ordering guard below still has something to compare.
+  const stripeEventCreatedAt = eventCreated ? new Date(eventCreated * 1000) : new Date()
 
   const data = {
     userId,
@@ -260,11 +323,50 @@ const upsertSubscription = async (userId, planId, stripeSub) => {
     currentPeriodStart: periodStart ? new Date(periodStart * 1000) : null,
     currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
     canceledAt: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000) : null,
+    stripeEventCreatedAt,
   }
 
-  await prisma.subscription.upsert({
-    where: { stripeSubscriptionId: stripeSub.id },
-    create: data,
-    update: data,
+  // Ordering guard — Stripe delivery is unordered, so a delayed event must
+  // not overwrite state already written by a newer one (e.g. a late
+  // `updated` resurrecting ACTIVE over a subsequent `deleted`/CANCELED).
+  // Only write when no row exists yet for this subscription, or the
+  // existing row was last written by an older (or equally-timed) event.
+  const updateResult = await prisma.subscription.updateMany({
+    where: {
+      stripeSubscriptionId: stripeSub.id,
+      OR: [{ stripeEventCreatedAt: null }, { stripeEventCreatedAt: { lte: stripeEventCreatedAt } }],
+    },
+    data,
   })
+
+  if (updateResult.count > 0) {
+    auditLog('SUBSCRIPTION_UPDATED', {
+      userId,
+      metadata: { stripeSubscriptionId: stripeSub.id, status: data.status },
+    })
+    return
+  }
+
+  // updateMany matched nothing: either the row doesn't exist yet (create),
+  // or it exists but this event is stale relative to it (skip).
+  try {
+    await prisma.subscription.create({ data })
+    auditLog('SUBSCRIPTION_CREATED', {
+      userId,
+      metadata: { stripeSubscriptionId: stripeSub.id, status: data.status },
+    })
+  } catch (err) {
+    // P2002 on stripeSubscriptionId means a concurrent webhook created the
+    // row between the updateMany above and this create — or the row exists
+    // and this event was simply stale. Either way there's nothing more to
+    // do: a newer event already owns (or will own) this row.
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      logger.info(
+        { stripeSubscriptionId: stripeSub.id, stripeEventCreatedAt },
+        'Stale or racing Stripe webhook event skipped',
+      )
+      return
+    }
+    throw err
+  }
 }

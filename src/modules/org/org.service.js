@@ -186,6 +186,39 @@ export const updateMemberRole = async (orgId, targetUserId, role) => {
   return { member: updated }
 }
 
+// Hands ownership of the org to an existing member, demoting the current
+// owner to ADMIN. Required before an owner can delete their account while
+// the org still has other members — see gdpr.service.js's deleteAccount.
+export const transferOwnership = async (orgId, currentOwnerId, newOwnerId) => {
+  if (newOwnerId === currentOwnerId) {
+    throw httpError('errors.cannotTransferToSelf', 400)
+  }
+
+  const targetMembership = await prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: orgId, userId: newOwnerId } },
+    select: { id: true },
+  })
+  if (!targetMembership) throw httpError('errors.memberNotFound', 404)
+
+  const [organization] = await prisma.$transaction([
+    prisma.organization.update({
+      where: { id: orgId },
+      data: { ownerId: newOwnerId },
+      select: orgSelect,
+    }),
+    prisma.organizationMember.update({
+      where: { organizationId_userId: { organizationId: orgId, userId: newOwnerId } },
+      data: { role: 'OWNER' },
+    }),
+    prisma.organizationMember.update({
+      where: { organizationId_userId: { organizationId: orgId, userId: currentOwnerId } },
+      data: { role: 'ADMIN' },
+    }),
+  ])
+
+  return { organization }
+}
+
 export const removeMember = async (orgId, targetUserId) => {
   const membership = await prisma.organizationMember.findUnique({
     where: { organizationId_userId: { organizationId: orgId, userId: targetUserId } },

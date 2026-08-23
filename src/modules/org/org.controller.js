@@ -80,6 +80,26 @@ export const restoreOrganization = async (req, res, next) => {
   }
 }
 
+export const transferOwnership = async (req, res, next) => {
+  try {
+    const data = await orgService.transferOwnership(
+      req.tenant.id,
+      req.user.id,
+      req.validated.body.newOwnerId,
+    )
+    auditLog('ORG_OWNERSHIP_TRANSFERRED', {
+      userId: req.user.id,
+      targetUserId: req.validated.body.newOwnerId,
+      organizationId: req.tenant.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+    res.json({ success: true, data: translateResult(req, data) })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export const listMembers = async (req, res, next) => {
   try {
     const data = await orgService.listMembers(req.tenant.id, req.validated?.query)

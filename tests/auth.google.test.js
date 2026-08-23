@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import app from '../src/app.js'
 import { prisma } from '../src/config/db.js'
@@ -55,6 +55,17 @@ const cleanupUser = async (email) => {
   await prisma.user.deleteMany({ where: { email } })
 }
 
+// H4 — POST /api/auth/google now requires the `state` issued by GET
+// /api/auth/google (login-CSRF defense). It's stateless and not single-use
+// (see utils/oauthState.js), so one fetched here is reused across every test
+// below instead of round-tripping GET before each POST.
+let VALID_STATE
+
+beforeAll(async () => {
+  const res = await request(app).get('/api/auth/google')
+  VALID_STATE = res.body.data.state
+})
+
 afterAll(async () => {
   for (const email of createdEmails) {
     await cleanupUser(email)
@@ -70,12 +81,21 @@ afterAll(async () => {
 })
 
 describe('GET /api/auth/google', () => {
-  it('returns a Google OAuth URL', async () => {
+  it('returns a Google OAuth URL and a state token', async () => {
     const res = await request(app).get('/api/auth/google')
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
     expect(res.body.data.url).toContain('accounts.google.com')
+    expect(res.body.data.state).toBeTypeOf('string')
+    expect(res.body.data.state.length).toBeGreaterThan(0)
+  })
+
+  it('returns a fresh state on every call', async () => {
+    const first = await request(app).get('/api/auth/google')
+    const second = await request(app).get('/api/auth/google')
+
+    expect(first.body.data.state).not.toBe(second.body.data.state)
   })
 })
 
@@ -93,7 +113,9 @@ describe('POST /api/auth/google', () => {
       name: 'New Google User',
     }
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
@@ -117,11 +139,15 @@ describe('POST /api/auth/google', () => {
     }
 
     // First sign-in — creates the user
-    const first = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const first = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
     expect(first.status).toBe(200)
 
     // Second sign-in — should log in the same user
-    const second = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const second = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
     expect(second.status).toBe(200)
     expect(second.body.data.user.email).toBe(googleEmail)
     expect(second.body.data.user.id).toBe(first.body.data.user.id)
@@ -148,13 +174,15 @@ describe('POST /api/auth/google', () => {
       name: 'Link Test',
     }
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(200)
     expect(res.body.data.user.email).toBe(googleEmail)
 
     // Verify googleId was set on the user
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await prisma.user.findFirst({
       where: { email: googleEmail },
       select: { googleId: true },
     })
@@ -162,7 +190,9 @@ describe('POST /api/auth/google', () => {
   })
 
   it('rejects invalid authorization code', async () => {
-    const res = await request(app).post('/api/auth/google').send({ code: 'invalid-token' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'invalid-token', state: VALID_STATE })
 
     expect(res.status).toBe(401)
     expect(res.body.success).toBe(false)
@@ -174,6 +204,46 @@ describe('POST /api/auth/google', () => {
 
     expect(res.status).toBe(400)
     expect(res.body.errors).toBeDefined()
+  })
+
+  // H4 — login CSRF. Without a required, verified `state`, an attacker who
+  // captures a valid `code` for their own Google account could trick a
+  // victim's browser into completing this exchange on the attacker's behalf.
+  it('rejects missing state', async () => {
+    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.errors).toBeDefined()
+  })
+
+  it('rejects a tampered state', async () => {
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: `${VALID_STATE}x` })
+
+    expect(res.status).toBe(401)
+    expect(res.body.message).toMatch(/invalid|expired/i)
+  })
+
+  it('rejects a state signed with the wrong secret', async () => {
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: 'nonce.9999999999999.deadbeef' })
+
+    expect(res.status).toBe(401)
+    expect(res.body.message).toMatch(/invalid|expired/i)
+  })
+
+  it('rejects an expired state', async () => {
+    // Same format as a real state (nonce.expiresAt.signature) but with an
+    // expiresAt in the past — the signature won't match (it's not really
+    // signed), which exercises the same rejection path as a forged token.
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: `deadbeef.${Date.now() - 1000}.deadbeef` })
+
+    expect(res.status).toBe(401)
+    expect(res.body.message).toMatch(/invalid|expired/i)
   })
 
   it('rejects login for OAuth-only user via password login', async () => {
@@ -190,7 +260,9 @@ describe('POST /api/auth/google', () => {
     }
 
     // Create user via Google
-    await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     // Try to log in with password — should be rejected
     const res = await request(app).post('/api/auth/login').send({
@@ -218,14 +290,16 @@ describe('POST /api/auth/google', () => {
       name: 'Unverified Google User',
     }
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(401)
     expect(res.body.success).toBe(false)
     expect(res.body.message).toMatch(/not verified/i)
 
     // No account may be created from an unverified claim
-    const dbUser = await prisma.user.findUnique({ where: { email: googleEmail } })
+    const dbUser = await prisma.user.findFirst({ where: { email: googleEmail } })
     expect(dbUser).toBeNull()
   })
 
@@ -237,7 +311,9 @@ describe('POST /api/auth/google', () => {
 
     currentPayload = { sub: googleId, email: googleEmail, name: 'No Verif Claim' }
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(401)
     expect(res.body.message).toMatch(/not verified/i)
@@ -261,12 +337,14 @@ describe('POST /api/auth/google', () => {
       name: 'Attacker',
     }
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(401)
 
     // The victim's account must be untouched — no googleId linked
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await prisma.user.findFirst({
       where: { email: victimEmail },
       select: { googleId: true },
     })
@@ -288,7 +366,9 @@ describe('POST /api/auth/google', () => {
     }
 
     // First sign-in creates the account and returns tokens
-    const first = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const first = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
     expect(first.status).toBe(200)
     expect(first.body.data.token).toBeTypeOf('string')
 
@@ -299,7 +379,9 @@ describe('POST /api/auth/google', () => {
       data: { twoFactorEnabled: true, twoFactorSecret: 'JBSWY3DPEHPK3PXP' },
     })
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(200)
     expect(res.body.data.twoFactorRequired).toBe(true)
@@ -323,7 +405,9 @@ describe('POST /api/auth/google', () => {
       name: 'Banned 2FA User',
     }
 
-    const first = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const first = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
     expect(first.status).toBe(200)
 
     await prisma.user.update({
@@ -331,7 +415,9 @@ describe('POST /api/auth/google', () => {
       data: { twoFactorEnabled: true, twoFactorSecret: 'JBSWY3DPEHPK3PXP', banned: true },
     })
 
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(403)
     expect(res.body.message).toMatch(/banned/)
@@ -351,7 +437,9 @@ describe('POST /api/auth/google', () => {
     }
 
     // Create user via Google
-    const createRes = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const createRes = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
     expect(createRes.status).toBe(200)
 
     // Ban the user directly in DB
@@ -361,7 +449,9 @@ describe('POST /api/auth/google', () => {
     })
 
     // Try to log in again
-    const res = await request(app).post('/api/auth/google').send({ code: 'valid-auth-code' })
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ code: 'valid-auth-code', state: VALID_STATE })
 
     expect(res.status).toBe(403)
     expect(res.body.message).toMatch(/banned/)

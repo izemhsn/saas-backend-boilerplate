@@ -51,10 +51,21 @@ export const revokeSession = async (userId, sessionId) => {
 }
 
 export const revokeAllSessions = async (userId) => {
-  const result = await prisma.refreshToken.updateMany({
-    where: { userId, revoked: false },
-    data: { revoked: true },
-  })
+  // Revoking a refresh token alone doesn't touch any access token already
+  // issued under it — those stay valid (per `authenticate`'s tokenVersion
+  // check) for up to JWT_EXPIRES_IN after "revoke all" is called, which
+  // defeats the point of an emergency kill-switch. Bump tokenVersion in the
+  // same transaction so every outstanding access token is invalidated too.
+  const [result] = await prisma.$transaction([
+    prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    }),
+  ])
 
   return { revokedCount: result.count }
 }

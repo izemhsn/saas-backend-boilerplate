@@ -37,6 +37,11 @@
     "memberNotFound": "Member not found",
     "cannotChangeOwnerRole": "Cannot change the role of the organization owner",
     "cannotRemoveOwner": "Cannot remove the organization owner",
+    "cannotTransferToSelf": "Cannot transfer ownership to yourself",
+    "cannotDeleteAccountOwnsOrgWithMembers": "You own an organization that still has other members ({organizations}). Transfer ownership before deleting your account.",
+    "stripeCancellationFailed": "Failed to cancel your subscription with Stripe. Your account was not deleted — please try again or contact support.",
+    "cannotRestoreEmailInUse": "Cannot restore this user — their email is now in use by another account",
+    "invalidOrExpiredOAuthState": "Invalid or expired OAuth request. Please try signing in again.",
     "cannotInviteAsOwner": "Cannot invite someone as OWNER",
     "userAlreadyMember": "User is already a member of this organization",
     "pendingInvitationExists": "A pending invitation already exists for this email",
@@ -157,7 +162,9 @@
     "orgNameMinLength": "Organization name must be at least 2 characters",
     "slugMinLength": "Slug must be at least 2 characters",
     "slugFormat": "Slug must be lowercase alphanumeric with hyphens",
-    "nameRequired": "Name is required"
+    "nameRequired": "Name is required",
+    "newOwnerIdRequired": "New owner ID is required",
+    "oauthStateRequired": "OAuth state is required"
   },
   "emails": {
     "verification": {

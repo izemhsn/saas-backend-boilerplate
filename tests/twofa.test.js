@@ -24,6 +24,20 @@ const login = async (email, password = VALID_PASSWORD) => {
   return request(app).post('/api/auth/login').send({ email, password })
 }
 
+// Once 2FA is enabled, plain login no longer returns a token — it returns a
+// challenge (see "Login flow with 2FA" below). Several tests need a *valid*
+// access token after enabling 2FA (M1 bumps tokenVersion on enable/disable,
+// so the token used to enable is stale immediately afterwards) — this
+// completes that full challenge flow to get one.
+const freshTokenAfterTwoFactor = async (email, secret) => {
+  const loginRes = await login(email)
+  const code = await generate({ secret: decryptSecret(secret) })
+  const verifyRes = await request(app)
+    .post('/api/auth/2fa/verify')
+    .send({ challengeToken: loginRes.body.data.challengeToken, code })
+  return verifyRes.body.data.token
+}
+
 afterAll(async () => {
   await prisma.twoFactorChallenge.deleteMany({
     where: { user: { email: { in: createdEmails } } },
@@ -72,10 +86,14 @@ describe('Two-factor authentication', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ code })
 
+      // enable() bumps tokenVersion (M1) — `token` is stale now, and login is
+      // gated behind the 2FA challenge, so get a fresh token that way
+      const freshToken = await freshTokenAfterTwoFactor(email, user.twoFactorSecret)
+
       // Try setup again
       const res = await request(app)
         .post('/api/auth/2fa/setup')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${freshToken}`)
 
       expect(res.status).toBe(400)
       expect(res.body.message).toContain('already enabled')
@@ -111,6 +129,31 @@ describe('Two-factor authentication', () => {
       const updated = await prisma.user.findFirst({ where: { email } })
       expect(updated.twoFactorEnabled).toBe(true)
       expect(updated.twoFactorBackupCodes).toHaveLength(10)
+    }, 30000)
+
+    // M1 — a session stolen before 2FA was enabled must not survive enabling
+    // it, or the enrolment doesn't actually remediate a compromised session.
+    it('invalidates the access token and refresh token issued before enabling 2FA', async () => {
+      const { email, res: reg } = await registerUser('enable-invalidates')
+      const token = reg.body.data.token
+      const refreshToken = reg.body.data.refreshToken
+
+      await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
+      const user = await prisma.user.findFirst({ where: { email } })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+      const enableRes = await request(app)
+        .post('/api/auth/2fa/enable')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code })
+      expect(enableRes.status).toBe(200)
+
+      // The pre-enable access token is now stale (tokenVersion bumped)
+      const meRes = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`)
+      expect(meRes.status).toBe(401)
+
+      // The pre-enable refresh token was revoked too
+      const refreshRes = await request(app).post('/api/auth/refresh').send({ refreshToken })
+      expect(refreshRes.status).toBe(401)
     }, 30000)
 
     it('rejects enable with invalid code', async () => {
@@ -161,10 +204,14 @@ describe('Two-factor authentication', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ code })
 
+      // enable() bumps tokenVersion (M1) — `token` is stale now, and login is
+      // gated behind the 2FA challenge, so get a fresh token that way
+      const freshToken = await freshTokenAfterTwoFactor(email, user.twoFactorSecret)
+
       // Disable
       const res = await request(app)
         .post('/api/auth/2fa/disable')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${freshToken}`)
         .send({ password: VALID_PASSWORD })
 
       expect(res.status).toBe(200)
@@ -174,6 +221,38 @@ describe('Two-factor authentication', () => {
       expect(updated.twoFactorEnabled).toBe(false)
       expect(updated.twoFactorSecret).toBeNull()
       expect(updated.twoFactorBackupCodes).toHaveLength(0)
+    }, 30000)
+
+    // M1 — symmetric with enable(): disabling 2FA also bumps tokenVersion and
+    // revokes refresh tokens, so a token issued before the disable can't
+    // linger past it either.
+    it('invalidates the access token used to disable 2FA', async () => {
+      const { email, res: reg } = await registerUser('disable-invalidates')
+      const token = reg.body.data.token
+
+      await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
+      const user = await prisma.user.findFirst({ where: { email } })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+      await request(app)
+        .post('/api/auth/2fa/enable')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code })
+
+      // enable() already bumped tokenVersion, so `token` is stale now — 2FA
+      // is enabled too, so getting a fresh token means completing the
+      // challenge flow, not a plain login
+      const freshToken = await freshTokenAfterTwoFactor(email, user.twoFactorSecret)
+
+      const disableRes = await request(app)
+        .post('/api/auth/2fa/disable')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .send({ password: VALID_PASSWORD })
+      expect(disableRes.status).toBe(200)
+
+      const meRes = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${freshToken}`)
+      expect(meRes.status).toBe(401)
     }, 30000)
 
     it('rejects disable with wrong password', async () => {
@@ -188,9 +267,11 @@ describe('Two-factor authentication', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ code })
 
+      const freshToken = await freshTokenAfterTwoFactor(email, user.twoFactorSecret)
+
       const res = await request(app)
         .post('/api/auth/2fa/disable')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Authorization', `Bearer ${freshToken}`)
         .send({ password: 'WrongPassword123' })
 
       expect(res.status).toBe(401)
