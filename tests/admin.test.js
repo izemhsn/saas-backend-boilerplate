@@ -430,7 +430,7 @@ describe('Ban/Suspend enforcement', () => {
 
   it('banned user cannot login', async () => {
     const { email } = await registerUser('ban-login-target')
-    const targetUser = await prisma.user.findUnique({ where: { email } })
+    const targetUser = await prisma.user.findFirst({ where: { email } })
 
     await prisma.user.update({
       where: { id: targetUser.id },
@@ -451,7 +451,7 @@ describe('Ban/Suspend enforcement', () => {
 
   it('suspended user cannot login', async () => {
     const { email: suspendEmail } = await registerUser('suspend-login-target')
-    const targetUser = await prisma.user.findUnique({ where: { email: suspendEmail } })
+    const targetUser = await prisma.user.findFirst({ where: { email: suspendEmail } })
 
     await prisma.user.update({
       where: { id: targetUser.id },

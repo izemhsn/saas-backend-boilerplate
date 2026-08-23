@@ -1,3 +1,4 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import { prisma } from '../../config/db.js'
 import { httpError } from '../../utils/httpError.js'
 import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
@@ -133,11 +134,23 @@ export const restoreUser = async (userId) => {
   })
   if (!user) throw httpError('errors.deletedUserNotFound', 404)
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { deletedAt: null },
-    select: userSelect,
-  })
+  // email/googleId/pendingEmail are only unique among live rows (see H8 in
+  // AUDIT.md) — someone may have registered with this user's former email
+  // while they were soft-deleted, which the partial unique index now allows.
+  // Restoring would then collide; surface a clear conflict instead of the
+  // generic mapped-Prisma-error 409.
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { deletedAt: null },
+      select: userSelect,
+    })
+  } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw httpError('errors.cannotRestoreEmailInUse', 409)
+    }
+    throw err
+  }
 
   return { messageKey: 'messages.userRestoredSuccessfully' }
 }

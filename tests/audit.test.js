@@ -162,7 +162,7 @@ describe('Audit log integration', () => {
 
   it('logs USER_LOGIN on login', async () => {
     const { email } = await registerUser('log-login')
-    const user = await prisma.user.findUnique({ where: { email } })
+    const user = await prisma.user.findFirst({ where: { email } })
 
     await request(app).post('/api/auth/login').send({ email, password: VALID_PASSWORD })
 

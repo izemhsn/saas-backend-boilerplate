@@ -291,4 +291,74 @@ describe('DELETE /api/auth/account', () => {
     const orgIdx = createdOrgIds.findIndex((id) => id !== null)
     if (orgIdx >= 0) createdOrgIds.splice(orgIdx, 1)
   })
+
+  // H6 — Organization.owner is onDelete: Cascade, so deleting an account that
+  // owns an org with other members would silently destroy those members'
+  // access (and everything else cascading from the org) along with it.
+  describe('blocked while owning an org with other members (H6)', () => {
+    it('rejects deletion and leaves the org and members untouched', async () => {
+      const { token, userId } = await registerUser('h6-block-owner')
+      const { userId: memberUserId } = await registerUser('h6-block-member')
+
+      const org = await createOrg(userId, `h6-block-${RUN_ID}`)
+      await prisma.organizationMember.create({
+        data: { organizationId: org.id, userId: memberUserId, role: 'MEMBER' },
+      })
+
+      const res = await request(app)
+        .delete('/api/auth/account')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ password: VALID_PASSWORD })
+
+      expect(res.status).toBe(409)
+      expect(res.body.message).toMatch(/organization/i)
+
+      // Nothing was destroyed
+      const stillExists = await prisma.user.findUnique({ where: { id: userId } })
+      expect(stillExists).not.toBeNull()
+      const orgStillExists = await prisma.organization.findUnique({ where: { id: org.id } })
+      expect(orgStillExists).not.toBeNull()
+      const memberStillExists = await prisma.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId: org.id, userId: memberUserId } },
+      })
+      expect(memberStillExists).not.toBeNull()
+    })
+
+    it('allows deletion of an org owned alone (no other members)', async () => {
+      const { token, userId } = await registerUser('h6-solo-owner')
+      await createOrg(userId, `h6-solo-${RUN_ID}`)
+
+      const res = await request(app)
+        .delete('/api/auth/account')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ password: VALID_PASSWORD })
+
+      expect(res.status).toBe(200)
+      createdUserIds.splice(createdUserIds.indexOf(userId), 1)
+    })
+
+    it('allows deletion after transferring ownership away', async () => {
+      const { token, userId } = await registerUser('h6-transfer-owner')
+      const { userId: memberUserId } = await registerUser('h6-transfer-member')
+
+      const org = await createOrg(userId, `h6-transfer-${RUN_ID}`)
+      await prisma.organizationMember.create({
+        data: { organizationId: org.id, userId: memberUserId, role: 'MEMBER' },
+      })
+
+      const transferRes = await request(app)
+        .post(`/api/organizations/${org.id}/transfer-ownership`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ newOwnerId: memberUserId })
+      expect(transferRes.status).toBe(200)
+
+      const res = await request(app)
+        .delete('/api/auth/account')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ password: VALID_PASSWORD })
+
+      expect(res.status).toBe(200)
+      createdUserIds.splice(createdUserIds.indexOf(userId), 1)
+    })
+  })
 })

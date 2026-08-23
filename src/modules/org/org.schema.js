@@ -37,6 +37,15 @@ export const orgIdParamSchema = z.object({
   }),
 })
 
+export const transferOwnershipSchema = z.object({
+  params: z.object({
+    orgId: z.string().min(1),
+  }),
+  body: z.object({
+    newOwnerId: z.string().min(1, 'validation.newOwnerIdRequired'),
+  }),
+})
+
 export const updateMemberSchema = z.object({
   params: z.object({
     orgId: z.string().min(1),

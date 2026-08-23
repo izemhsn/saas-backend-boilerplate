@@ -41,6 +41,7 @@ import {
   removeMemberSchema,
   listOrgsSchema,
   listMembersSchema,
+  transferOwnershipSchema,
 } from '../org/org.schema.js'
 import {
   createInvitationSchema,
@@ -92,6 +93,7 @@ const ERROR_MESSAGES = {
   409: 'Conflict — resource already exists',
   410: 'Gone — token expired',
   423: 'Account locked due to too many failed attempts',
+  502: 'Upstream (Stripe) request failed',
   503: 'Service unavailable',
 }
 
@@ -215,6 +217,8 @@ export const operations = [
     path: '/api/auth/google',
     tag: 'Auth',
     summary: 'Get Google OAuth authorization URL',
+    description:
+      'Returns an authorization URL plus a `state` token. The client must echo `state` back on `POST /api/auth/google` — it is a CSRF defense, not a session identifier, and expires after 10 minutes.',
     security: null,
     responses: { ...ok(s.googleAuthUrlData, 'OAuth URL'), ...errors(500) },
   },
@@ -224,7 +228,7 @@ export const operations = [
     tag: 'Auth',
     summary: 'Log in with Google',
     description:
-      'Exchanges a Google authorization code for tokens. Links to an existing account when emails match, but only when Google reports the address as verified — an unverified address is rejected with 401. When 2FA is enabled, returns `twoFactorRequired: true` with a challenge token instead of JWTs, exactly like password login.',
+      'Exchanges a Google authorization code for tokens. `state` must match the value returned by GET /api/auth/google (login-CSRF defense) or the request is rejected with 401 before any call to Google. Links to an existing account when emails match, but only when Google reports the address as verified — an unverified address is rejected with 401. When 2FA is enabled, returns `twoFactorRequired: true` with a challenge token instead of JWTs, exactly like password login.',
     security: null,
     request: googleLoginSchema,
     responses: { ...ok(s.loginData, 'Tokens or 2FA challenge'), ...errors(400, 401, 403) },
@@ -322,10 +326,10 @@ export const operations = [
     tag: 'GDPR',
     summary: 'Delete account',
     description:
-      'Hard-deletes the account after password verification. Cascades to tokens, memberships, subscriptions, API keys, and notifications. Prevents the last admin from deleting.',
+      'Hard-deletes the account after password verification. Cascades to tokens, memberships, subscriptions, API keys, and notifications. Prevents the last admin from deleting. Blocked with 409 while the user owns an organization that has other members — transfer ownership first via POST /api/organizations/{orgId}/transfer-ownership. Cancels any live Stripe subscription before deleting; fails with 502 if cancellation fails rather than delete an account Stripe would keep billing.',
     security: 'bearer',
     request: deleteAccountSchema,
-    responses: { ...noData('Account deleted'), ...errors(400, 401, 403) },
+    responses: { ...noData('Account deleted'), ...errors(400, 401, 403, 409, 502) },
   },
 
   // --- Organizations -----------------------------------------------------
@@ -392,6 +396,17 @@ export const operations = [
     security: 'orgRole',
     request: orgIdParamSchema,
     responses: { ...noData('Organization restored'), ...errors(401, 403, 404) },
+  },
+  {
+    method: 'POST',
+    path: '/api/organizations/{orgId}/transfer-ownership',
+    tag: 'Organizations',
+    summary: 'Transfer organization ownership',
+    description:
+      'Requires OWNER role. Hands ownership to an existing member (demoting the current owner to ADMIN). Required before an owner can delete their own account while the org still has other members.',
+    security: 'orgRole',
+    request: transferOwnershipSchema,
+    responses: { ...ok(z.object({ organization: s.organization })), ...errors(400, 401, 403, 404) },
   },
   {
     method: 'GET',

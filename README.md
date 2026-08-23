@@ -6,7 +6,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
-[![Tests](https://img.shields.io/badge/tests-378%20passing-brightgreen)](https://github.com/izemhsn/saas-backend-boilerplate/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-412%20passing-brightgreen)](https://github.com/izemhsn/saas-backend-boilerplate/actions/workflows/ci.yml)
 
 A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, Google OAuth, Stripe billing, organizations, role-based access control, rate limiting, background jobs, i18n, and a full integration test suite.
 
@@ -46,7 +46,7 @@ A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, G
 | Validation    | Zod 4                                                      |
 | Logging       | Pino + pino-http                                           |
 | Monitoring    | Sentry                                                     |
-| Testing       | Vitest + Supertest (387 integration tests)                 |
+| Testing       | Vitest + Supertest (412 integration tests)                 |
 | Linting       | ESLint 9 + Prettier                                        |
 | Container     | Docker (multi-stage, non-root)                             |
 | CI/CD         | GitHub Actions (lint → test → build → deploy)              |
@@ -136,7 +136,7 @@ src/
   app.js           # Express app (middleware chain, rate limiting, routes)
   server.js        # HTTP server + graceful shutdown + env validation
   worker.js        # Background job worker process
-tests/             # Integration tests (23 files, 378 tests)
+tests/             # Integration tests (26 files, 412 tests)
 prisma/            # Schema, migrations, seed script
 ```
 
@@ -166,40 +166,45 @@ Each module follows the same pattern: `router.js` → `controller.js` → `servi
 
 ### Auth
 
-| Method   | Route                           | Auth | Description                                                    |
-| -------- | ------------------------------- | ---- | -------------------------------------------------------------- |
-| `POST`   | `/api/auth/register`            | No   | Register — returns JWT + email verification token              |
-| `POST`   | `/api/auth/login`               | No   | Login — returns JWT or 2FA challenge                           |
-| `POST`   | `/api/auth/refresh`             | No   | Exchange a refresh token for a new JWT + rotated refresh token |
-| `POST`   | `/api/auth/verify-email`        | No   | Verify email with token from registration                      |
-| `POST`   | `/api/auth/resend-verification` | No   | Issue a new email verification token                           |
-| `POST`   | `/api/auth/forgot-password`     | No   | Issue a password reset token (1h expiry)                       |
-| `POST`   | `/api/auth/reset-password`      | No   | Reset password using a valid reset token                       |
-| `POST`   | `/api/auth/change-password`     | Yes  | Change password (requires current password)                    |
-| `POST`   | `/api/auth/change-email`        | Yes  | Change email (requires password, verified before switching)    |
-| `POST`   | `/api/auth/logout`              | Yes  | Logout — see session behavior below                            |
-| `GET`    | `/api/auth/me`                  | Yes  | Get current user profile                                       |
-| `GET`    | `/api/auth/google`              | No   | Get Google OAuth authorization URL                             |
-| `POST`   | `/api/auth/google`              | No   | Exchange Google authorization code for tokens                  |
-| `POST`   | `/api/auth/2fa/setup`           | Yes  | Generate TOTP secret + QR code                                 |
-| `POST`   | `/api/auth/2fa/enable`          | Yes  | Enable 2FA with valid TOTP code — returns backup codes         |
-| `POST`   | `/api/auth/2fa/disable`         | Yes  | Disable 2FA (requires password)                                |
-| `POST`   | `/api/auth/2fa/verify`          | No   | Complete 2FA login with TOTP code or backup code               |
-| `POST`   | `/api/auth/data-export`         | Yes  | Export all user data (requires password re-authentication)     |
-| `DELETE` | `/api/auth/account`             | Yes  | Delete account permanently (requires password)                 |
+| Method   | Route                           | Auth | Description                                                         |
+| -------- | ------------------------------- | ---- | ------------------------------------------------------------------- |
+| `POST`   | `/api/auth/register`            | No   | Register — returns JWT + email verification token                   |
+| `POST`   | `/api/auth/login`               | No   | Login — returns JWT or 2FA challenge                                |
+| `POST`   | `/api/auth/refresh`             | No   | Exchange a refresh token for a new JWT + rotated refresh token      |
+| `POST`   | `/api/auth/verify-email`        | No   | Verify email with token from registration                           |
+| `POST`   | `/api/auth/resend-verification` | No   | Issue a new email verification token                                |
+| `POST`   | `/api/auth/forgot-password`     | No   | Issue a password reset token (1h expiry)                            |
+| `POST`   | `/api/auth/reset-password`      | No   | Reset password using a valid reset token                            |
+| `POST`   | `/api/auth/change-password`     | Yes  | Change password (requires current password)                         |
+| `POST`   | `/api/auth/change-email`        | Yes  | Change email (requires password, verified before switching)         |
+| `POST`   | `/api/auth/logout`              | Yes  | Logout — see session behavior below                                 |
+| `GET`    | `/api/auth/me`                  | Yes  | Get current user profile                                            |
+| `GET`    | `/api/auth/google`              | No   | Get Google OAuth authorization URL + CSRF `state`                   |
+| `POST`   | `/api/auth/google`              | No   | Exchange Google authorization code + `state` for tokens             |
+| `POST`   | `/api/auth/2fa/setup`           | Yes  | Generate TOTP secret + QR code                                      |
+| `POST`   | `/api/auth/2fa/enable`          | Yes  | Enable 2FA with valid TOTP code — returns backup codes              |
+| `POST`   | `/api/auth/2fa/disable`         | Yes  | Disable 2FA (requires password)                                     |
+| `POST`   | `/api/auth/2fa/verify`          | No   | Complete 2FA login with TOTP code or backup code                    |
+| `POST`   | `/api/auth/data-export`         | Yes  | Export all user data (requires password re-authentication)          |
+| `DELETE` | `/api/auth/account`             | Yes  | Delete account permanently (requires password; see GDPR note below) |
+
+**GDPR account deletion safeguards:** `DELETE /api/auth/account` is blocked with 409 while the user owns an organization that has other members — an org owner exercising their own right to erasure must not silently destroy other members' access. Transfer ownership first via `POST /api/organizations/:orgId/transfer-ownership` (an org owned alone is unaffected and deletes normally). Any live Stripe subscription is cancelled before the account is deleted; if cancellation fails, the whole request fails with 502 rather than deleting an account Stripe would keep billing.
 
 ### Organizations
 
-| Method   | Route                                   | Auth | Description                       |
-| -------- | --------------------------------------- | ---- | --------------------------------- |
-| `POST`   | `/api/organizations`                    | Yes  | Create organization               |
-| `GET`    | `/api/organizations`                    | Yes  | List user's organizations         |
-| `GET`    | `/api/organizations/:orgId`             | Yes  | Get organization details          |
-| `PATCH`  | `/api/organizations/:orgId`             | Yes  | Update organization (OWNER/ADMIN) |
-| `DELETE` | `/api/organizations/:orgId`             | Yes  | Soft-delete organization (OWNER)  |
-| `GET`    | `/api/organizations/:orgId/members`     | Yes  | List members                      |
-| `PATCH`  | `/api/organizations/:orgId/members/:id` | Yes  | Update member role (OWNER)        |
-| `DELETE` | `/api/organizations/:orgId/members/:id` | Yes  | Remove member (OWNER/ADMIN)       |
+| Method   | Route                                          | Auth | Description                            |
+| -------- | ---------------------------------------------- | ---- | -------------------------------------- |
+| `POST`   | `/api/organizations`                           | Yes  | Create organization                    |
+| `GET`    | `/api/organizations`                           | Yes  | List user's organizations              |
+| `GET`    | `/api/organizations/:orgId`                    | Yes  | Get organization details               |
+| `PATCH`  | `/api/organizations/:orgId`                    | Yes  | Update organization (OWNER/ADMIN)      |
+| `DELETE` | `/api/organizations/:orgId`                    | Yes  | Soft-delete organization (OWNER)       |
+| `POST`   | `/api/organizations/:orgId/transfer-ownership` | Yes  | Transfer ownership to a member (OWNER) |
+| `GET`    | `/api/organizations/:orgId/members`            | Yes  | List members                           |
+| `PATCH`  | `/api/organizations/:orgId/members/:id`        | Yes  | Update member role (OWNER)             |
+| `DELETE` | `/api/organizations/:orgId/members/:id`        | Yes  | Remove member (OWNER/ADMIN)            |
+
+`POST /api/organizations/:orgId/transfer-ownership` hands ownership to an existing member (demoting the current owner to ADMIN). It's the required escape hatch for `DELETE /api/auth/account` — see the GDPR note below.
 
 ### Invitations
 
@@ -220,6 +225,8 @@ Each module follows the same pattern: `router.js` → `controller.js` → `servi
 | `POST` | `/api/billing/checkout`     | Yes  | Create Stripe checkout session        |
 | `POST` | `/api/billing/portal`       | Yes  | Create Stripe customer portal session |
 | `POST` | `/api/billing/webhook`      | No   | Stripe webhook (raw body + signature) |
+
+The webhook handler is idempotent and ordering-safe: each `event.id` is recorded and a redelivered event (Stripe's delivery is at-least-once) is skipped rather than reprocessed, and a subscription write is only applied if it's newer than whichever event last wrote that row (Stripe delivery is also unordered) — a delayed event can't resurrect stale state over a more recent one.
 
 ### API keys, Sessions, Admin, Audit, Notifications, Feature Flags
 
@@ -256,18 +263,23 @@ Protected routes require `Authorization: Bearer <token>`. API key routes accept 
 
 - **Multi-session** — Each login/registration issues an independent refresh token, stored (hashed) in the `refresh_tokens` table. A user can be signed in on multiple devices at once.
 - **Refresh rotation** — `POST /api/auth/refresh` revokes the submitted refresh token and returns a new one alongside a new access token.
-- **Reuse detection** — If an already-rotated (revoked) refresh token is presented, the entire token family for that user is revoked as a compromise signal.
+- **Reuse detection** — If an already-rotated (revoked) refresh token is presented, the entire token family for that user is revoked as a compromise signal, and the user's `tokenVersion` is bumped so any access token already issued under that family is invalidated immediately too — not just future refreshes.
 - **Logout** — `POST /api/auth/logout` with `{ "refreshToken": "..." }` revokes just that session. Without a body, it revokes **all** of the user's refresh tokens (logout everywhere).
-- **Access-token invalidation** — Changing or resetting a password increments the user's `tokenVersion`, immediately invalidating all previously issued access tokens (checked in the `authenticate` middleware) and revoking all refresh tokens.
+- **Revoke all sessions** — `POST /api/sessions/revoke-all` also bumps `tokenVersion`, so it acts as an immediate kill-switch for outstanding access tokens rather than only preventing future refreshes.
+- **Access-token invalidation** — Changing or resetting a password, or enabling/disabling 2FA, increments the user's `tokenVersion`, immediately invalidating all previously issued access tokens (checked in the `authenticate` middleware) and revoking all refresh tokens.
 - **Account lockout** — After 5 consecutive failed login attempts an account is locked for 15 minutes (HTTP `423`). The counter resets on a successful login or once the lock expires.
 
 ### Two-factor authentication (2FA)
 
 - **Setup** — `POST /api/auth/2fa/setup` generates a TOTP secret and QR code. The secret is encrypted at rest (AES-256-GCM).
-- **Enable** — `POST /api/auth/2fa/enable` verifies the first TOTP code and returns 10 single-use backup codes (stored hashed).
-- **Login flow** — When 2FA is enabled, `POST /api/auth/login` returns a `challengeToken` instead of tokens. Complete the login with `POST /api/auth/2fa/verify` using a TOTP code or backup code.
+- **Enable** — `POST /api/auth/2fa/enable` verifies the first TOTP code and returns 10 single-use backup codes (stored hashed). Also bumps `tokenVersion` and revokes existing refresh tokens, so a session stolen before 2FA was enabled doesn't survive enabling it.
+- **Login flow** — When 2FA is enabled, `POST /api/auth/login` (and `POST /api/auth/google`) returns a `challengeToken` instead of tokens. Complete the login with `POST /api/auth/2fa/verify` using a TOTP code or backup code.
 - **Attempt limiting** — Each challenge allows a maximum of 5 failed attempts before it's invalidated. The challenge claim is atomic (TOCTOU-safe).
-- **Disable** — `POST /api/auth/2fa/disable` requires the account password.
+- **Disable** — `POST /api/auth/2fa/disable` requires the account password, and also bumps `tokenVersion` / revokes refresh tokens.
+
+### Google OAuth login-CSRF protection
+
+`GET /api/auth/google` returns a signed, short-lived (10 minute) `state` token alongside the authorization URL. `POST /api/auth/google` requires that exact `state` back in the request body and rejects the exchange with 401 before making any call to Google if it's missing, tampered with, or expired. This stops an attacker who captures a valid authorization `code` for their own Google account from tricking a victim's browser into completing the exchange on the attacker's behalf.
 
 ### Middleware guards
 

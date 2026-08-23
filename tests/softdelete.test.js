@@ -164,6 +164,53 @@ describe('Soft delete — User', () => {
     expect(loginRes.status).toBe(200)
   })
 
+  // H8 — email/googleId/pendingEmail are only unique among live rows (a
+  // partial index scoped to deletedAt IS NULL), so a soft-deleted user's
+  // email must be free for a brand new signup instead of permanently stuck.
+  it('lets a new user register with a soft-deleted user’s email', async () => {
+    const user = await registerUser('h8-reuse')
+
+    await request(app)
+      .delete(`/api/admin/users/${user.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'New Owner Of This Email',
+      email: user.email,
+      password: VALID_PASSWORD,
+    })
+
+    expect(res.status).toBe(201)
+    expect(res.body.data.user.email).toBe(user.email)
+    expect(res.body.data.user.id).not.toBe(user.userId)
+    createdUserIds.push(res.body.data.user.id)
+  })
+
+  // H8 follow-up — once a soft-deleted user's email can be reused, restoring
+  // the original account can collide with whoever registered it in the
+  // meantime. That must surface as a clear conflict, not a raw DB error.
+  it('rejects restoring a user whose email was reused by someone else', async () => {
+    const user = await registerUser('h8-restore-conflict')
+
+    await request(app)
+      .delete(`/api/admin/users/${user.userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    const impostor = await request(app).post('/api/auth/register').send({
+      name: 'Impostor',
+      email: user.email,
+      password: VALID_PASSWORD,
+    })
+    expect(impostor.status).toBe(201)
+    createdUserIds.push(impostor.body.data.user.id)
+
+    const res = await request(app)
+      .post(`/api/admin/users/${user.userId}/restore`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    expect(res.status).toBe(409)
+  })
+
   it('returns 404 when restoring a non-deleted user', async () => {
     const user = await registerUser('sd-restore-404')
 

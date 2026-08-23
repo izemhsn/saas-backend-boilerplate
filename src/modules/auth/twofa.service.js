@@ -90,13 +90,24 @@ export const enable = async (userId, { code }) => {
     hashedCodes.push(await hashPassword(raw))
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      twoFactorEnabled: true,
-      twoFactorBackupCodes: hashedCodes,
-    },
-  })
+  // Atomic, and bumps tokenVersion + revokes refresh tokens for the same
+  // reason resetPassword/changePassword do: a session stolen before 2FA was
+  // enabled must not survive enabling it, or enabling 2FA doesn't actually
+  // remediate anything.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorEnabled: true,
+        twoFactorBackupCodes: hashedCodes,
+        tokenVersion: { increment: 1 },
+      },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    }),
+  ])
 
   return { messageKey: 'messages.twoFactorEnabled', backupCodes }
 }
@@ -116,14 +127,22 @@ export const disable = async (userId, { password }) => {
   const valid = await comparePassword(password, user.password)
   if (!valid) throw httpError('errors.passwordIncorrect', 401)
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
-      twoFactorBackupCodes: [],
-    },
-  })
+  // Same atomicity/revocation rationale as enable() above.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorBackupCodes: [],
+        tokenVersion: { increment: 1 },
+      },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    }),
+  ])
 
   return { messageKey: 'messages.twoFactorDisabled' }
 }

@@ -95,5 +95,8 @@ export const resetPasswordSchema = z.object({
 export const googleLoginSchema = z.object({
   body: z.object({
     code: z.string().min(1, 'validation.authorizationCodeRequired'),
+    // Echoes back the `state` issued by GET /api/auth/google — see H4 in
+    // AUDIT.md. Verified in auth.service.js before any call to Google.
+    state: z.string().min(1, 'validation.oauthStateRequired'),
   }),
 })

@@ -143,6 +143,7 @@ describe('POST /api/sessions/revoke-all', () => {
   it('revokes all active sessions for the user', async () => {
     const { res: registerRes } = await registerUser('revoke-all')
     const { token } = registerRes.body.data
+    const userId = registerRes.body.data.user.id
 
     // Create a second session via refresh
     await request(app)
@@ -156,22 +157,46 @@ describe('POST /api/sessions/revoke-all', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.revokedCount).toBeGreaterThanOrEqual(1)
 
-    // Verify all sessions are revoked
-    const listRes = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
-
-    for (const session of listRes.body.data.sessions) {
+    // Verify directly against the DB — listing via the API would need a
+    // fresh token, since (see M2 test below) revoke-all invalidates the
+    // very access token used to call it.
+    const sessions = await prisma.refreshToken.findMany({ where: { userId } })
+    for (const session of sessions) {
       expect(session.revoked).toBe(true)
     }
+  })
+
+  // M2 — revoking a refresh token alone leaves any access token already
+  // issued under it valid for up to JWT_EXPIRES_IN, which defeats the point
+  // of an emergency "log out everywhere" kill-switch. revoke-all must also
+  // bump tokenVersion so outstanding access tokens die immediately.
+  it('invalidates the access token used to call revoke-all', async () => {
+    const { res: registerRes } = await registerUser('revoke-all-invalidates')
+    const { token } = registerRes.body.data
+
+    const revokeRes = await request(app)
+      .post('/api/sessions/revoke-all')
+      .set('Authorization', `Bearer ${token}`)
+    expect(revokeRes.status).toBe(200)
+
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(401)
   })
 
   it('returns revokedCount 0 when no active sessions exist', async () => {
     const { res: registerRes } = await registerUser('revoke-all-empty')
     const { token } = registerRes.body.data
 
-    // Revoke all first
-    await request(app).post('/api/sessions/revoke-all').set('Authorization', `Bearer ${token}`)
+    // Revoke the one session individually first — unlike revoke-all (M2),
+    // a single-session revoke does not bump tokenVersion, so `token` stays
+    // valid to make the second call below.
+    const listRes = await request(app).get('/api/sessions').set('Authorization', `Bearer ${token}`)
+    const sessionId = listRes.body.data.sessions[0].id
+    await request(app)
+      .post(`/api/sessions/${sessionId}/revoke`)
+      .set('Authorization', `Bearer ${token}`)
 
-    // Revoke all again
+    // Revoke all — nothing left to revoke
     const res = await request(app)
       .post('/api/sessions/revoke-all')
       .set('Authorization', `Bearer ${token}`)

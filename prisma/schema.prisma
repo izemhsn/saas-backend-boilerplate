@@ -13,15 +13,21 @@ datasource db {
 
 model User {
   id        String   @id @default(cuid())
-  email     String   @unique
+  // email/googleId/pendingEmail are intentionally NOT @unique here — they are
+  // enforced by partial unique indexes scoped to live rows (WHERE "deletedAt"
+  // IS NULL), created via raw SQL because Prisma's schema language cannot
+  // express partial indexes. A soft-deleted user's email must be reusable by
+  // a new signup; a plain @unique would make it permanently unusable. See
+  // migration 20260823210000_tier2_correctness_and_data_safety.
+  email     String
   password  String?
   name      String?
-  googleId  String?  @unique
+  googleId  String?
   role                   Role     @default(USER)
   emailVerified          Boolean  @default(false)
   emailVerificationToken String?  @unique
   emailVerificationExpires DateTime?
-  pendingEmail           String?  @unique
+  pendingEmail           String?
   passwordResetToken     String?  @unique
   passwordResetExpires   DateTime?
   tokenVersion           Int      @default(0)
@@ -161,6 +167,11 @@ model Subscription {
   currentPeriodStart   DateTime?
   currentPeriodEnd     DateTime?
   canceledAt           DateTime?
+  // Timestamp of the Stripe event that last wrote this row (event.created).
+  // Stripe delivery is at-least-once and unordered, so a delayed event must
+  // not be allowed to overwrite state written by a newer one — the webhook
+  // handler only applies a write when its event is newer than this value.
+  stripeEventCreatedAt DateTime?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -169,6 +180,18 @@ model Subscription {
 
   @@index([userId])
   @@map("subscriptions")
+}
+
+// Records every successfully-parsed Stripe webhook event by its id, so a
+// retried or resent delivery is a no-op instead of being reprocessed
+// (Stripe's delivery guarantee is at-least-once). Never queried by the app
+// beyond the insert-or-skip check in handleWebhook — see billing.service.js.
+model ProcessedWebhookEvent {
+  id        String   @id
+  type      String
+  createdAt DateTime @default(now())
+
+  @@map("processed_webhook_events")
 }
 
 enum PlanInterval {
@@ -225,6 +248,7 @@ enum AuditAction {
   ORG_UPDATED
   ORG_DELETED
   ORG_RESTORED
+  ORG_OWNERSHIP_TRANSFERRED
   MEMBER_ADDED
   MEMBER_REMOVED
   MEMBER_ROLE_CHANGED

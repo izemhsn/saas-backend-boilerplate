@@ -11,6 +11,7 @@ import {
   getGoogleAuthUrl as buildGoogleAuthUrl,
 } from '../../config/google.js'
 import { createChallenge } from './twofa.service.js'
+import { createOAuthState, verifyOAuthState } from '../../utils/oauthState.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -275,12 +276,21 @@ export const refresh = async ({ refreshToken }, { userAgent, ipAddress } = {}) =
   })
 
   // Reuse detection: if the token exists but is revoked, someone is trying to reuse
-  // an already-rotated token. Revoke ALL tokens for this user as a compromise signal.
+  // an already-rotated token. Revoke ALL tokens for this user as a compromise signal,
+  // and bump tokenVersion so any access token already issued under the compromised
+  // family is invalidated immediately too — this is exactly the moment an immediate
+  // global kill matters most, not just at the refresh-token layer.
   if (storedToken?.revoked) {
-    await prisma.refreshToken.updateMany({
-      where: { userId: storedToken.userId },
-      data: { revoked: true },
-    })
+    await prisma.$transaction([
+      prisma.refreshToken.updateMany({
+        where: { userId: storedToken.userId },
+        data: { revoked: true },
+      }),
+      prisma.user.update({
+        where: { id: storedToken.userId },
+        data: { tokenVersion: { increment: 1 } },
+      }),
+    ])
     throw httpError('errors.invalidRefreshToken', 401)
   }
 
@@ -569,13 +579,24 @@ export const logout = async (userId, refreshToken) => {
 
 export const getGoogleAuthUrl = () => {
   if (!isGoogleConfigured()) throw httpError('errors.googleNotConfigured', 503)
-  const url = buildGoogleAuthUrl()
+  const state = createOAuthState()
+  const url = buildGoogleAuthUrl(state)
   if (!url) throw httpError('errors.googleNotConfigured', 503)
-  return { url }
+  return { url, state }
 }
 
-export const googleLogin = async ({ code }, { userAgent, ipAddress } = {}) => {
+export const googleLogin = async ({ code, state }, { userAgent, ipAddress } = {}) => {
   if (!isGoogleConfigured()) throw httpError('errors.googleNotConfigured', 503)
+
+  // OAuth login-CSRF defense (H4 in AUDIT.md): without this, an attacker who
+  // starts their own OAuth flow and captures a valid `code` for their own
+  // Google account can trick a victim's browser into completing this
+  // exchange, signing the victim into (or linking their account onto) the
+  // attacker's identity. Checked before any Google API call.
+  if (!verifyOAuthState(state)) {
+    throw httpError('errors.invalidOrExpiredOAuthState', 401)
+  }
+
   const client = getGoogleClient()
 
   let ticket

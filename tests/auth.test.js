@@ -212,6 +212,7 @@ describe('POST /api/auth/refresh', () => {
       .post('/api/auth/login')
       .send({ email, password: VALID_PASSWORD })
     const originalRefreshToken = login.body.data.refreshToken
+    const originalAccessToken = login.body.data.token
 
     // Rotate the token (normal use)
     const rotateRes = await request(app)
@@ -232,6 +233,14 @@ describe('POST /api/auth/refresh', () => {
       .post('/api/auth/refresh')
       .send({ refreshToken: newRefreshToken })
     expect(newTokenRes.status).toBe(401)
+
+    // M2 — reuse detection is exactly where an immediate global kill matters
+    // most: an access token minted under the compromised family must not
+    // stay usable for up to JWT_EXPIRES_IN after the compromise is detected.
+    const meRes = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${originalAccessToken}`)
+    expect(meRes.status).toBe(401)
   })
 })
 
@@ -258,7 +267,7 @@ describe('POST /api/auth/verify-email', () => {
     const origToken = registerRes.body.data.emailVerificationToken
 
     // Manually expire the token in the DB
-    const dbUser = await prisma.user.findUnique({ where: { email: emailFor('verify-expired') } })
+    const dbUser = await prisma.user.findFirst({ where: { email: emailFor('verify-expired') } })
     await prisma.user.update({
       where: { id: dbUser.id },
       data: { emailVerificationExpires: new Date(Date.now() - 1000) },

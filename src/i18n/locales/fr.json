@@ -37,6 +37,11 @@
     "memberNotFound": "Membre introuvable",
     "cannotChangeOwnerRole": "Impossible de modifier le rôle du propriétaire de l'organisation",
     "cannotRemoveOwner": "Impossible de supprimer le propriétaire de l'organisation",
+    "cannotTransferToSelf": "Impossible de transférer la propriété à vous-même",
+    "cannotDeleteAccountOwnsOrgWithMembers": "Vous possédez une organisation qui a encore d'autres membres ({organizations}). Transférez la propriété avant de supprimer votre compte.",
+    "stripeCancellationFailed": "Échec de l'annulation de votre abonnement auprès de Stripe. Votre compte n'a pas été supprimé — veuillez réessayer ou contacter le support.",
+    "cannotRestoreEmailInUse": "Impossible de restaurer cet utilisateur — son e-mail est désormais utilisé par un autre compte",
+    "invalidOrExpiredOAuthState": "Requête OAuth invalide ou expirée. Veuillez réessayer de vous connecter.",
     "cannotInviteAsOwner": "Impossible d'inviter quelqu'un en tant que OWNER",
     "userAlreadyMember": "L'utilisateur est déjà membre de cette organisation",
     "pendingInvitationExists": "Une invitation en attente existe déjà pour cet e-mail",
@@ -157,7 +162,9 @@
     "orgNameMinLength": "Le nom de l'organisation doit comporter au moins 2 caractères",
     "slugMinLength": "Le slug doit comporter au moins 2 caractères",
     "slugFormat": "Le slug doit être alphanumérique minuscule avec des tirets",
-    "nameRequired": "Le nom est requis"
+    "nameRequired": "Le nom est requis",
+    "newOwnerIdRequired": "L'ID du nouveau propriétaire est requis",
+    "oauthStateRequired": "L'état OAuth est requis"
   },
   "emails": {
     "verification": {
