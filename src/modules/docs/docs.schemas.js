@@ -241,3 +241,19 @@ export const evaluateFlagData = z.object({
 
 // Data export is a large aggregate — modelled as an opaque object.
 export const dataExport = z.record(z.string(), z.unknown())
+
+// Worked example resource — see src/modules/project.
+export const project = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  status: z.enum(['ACTIVE', 'ARCHIVED']),
+  organizationId: z.string(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+  createdBy: z.object({
+    id: z.string(),
+    name: z.string().nullable(),
+    email: z.string(),
+  }),
+})

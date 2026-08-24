@@ -37,6 +37,17 @@ if (dbHost && !['localhost', '127.0.0.1', '::1'].includes(dbHost)) {
   console.warn(`⚠️  Seeding a non-local database host: "${dbHost}" — make sure this is intended.\n`)
 }
 
+const upsertUserByEmail = async (email, data) => {
+  const existing = await prisma.user.findFirst({
+    where: { email, deletedAt: null },
+    select: { id: true },
+  })
+  if (existing) {
+    return prisma.user.findUniqueOrThrow({ where: { id: existing.id } })
+  }
+  return prisma.user.create({ data })
+}
+
 async function main() {
   console.log('🌱 Seeding database...\n')
 
@@ -89,70 +100,54 @@ async function main() {
   console.log(`  ✓ Plans: ${freePlan.name}, ${proPlan.name}, ${enterprisePlan.name}`)
 
   // ── Users ──────────────────────────────────────────────────────────
+  // NOTE: `email` is not a plain @unique column — it is covered by a partial
+  // unique index scoped to live rows (WHERE "deletedAt" IS NULL), so it is not
+  // a valid `WhereUniqueInput` and `user.upsert({ where: { email } })` throws.
+  // Look the user up explicitly instead.
   const passwordHash = await bcrypt.hash('Password123', 12)
 
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@demo.com' },
-    update: {},
-    create: {
-      email: 'admin@demo.com',
-      password: passwordHash,
-      name: 'Admin User',
-      role: 'ADMIN',
-      emailVerified: true,
-      lastLoginAt: new Date(),
-    },
+  const admin = await upsertUserByEmail('admin@demo.com', {
+    email: 'admin@demo.com',
+    password: passwordHash,
+    name: 'Admin User',
+    role: 'ADMIN',
+    emailVerified: true,
+    lastLoginAt: new Date(),
   })
 
-  const owner = await prisma.user.upsert({
-    where: { email: 'owner@demo.com' },
-    update: {},
-    create: {
-      email: 'owner@demo.com',
-      password: passwordHash,
-      name: 'Org Owner',
-      role: 'USER',
-      emailVerified: true,
-      lastLoginAt: new Date(),
-    },
+  const owner = await upsertUserByEmail('owner@demo.com', {
+    email: 'owner@demo.com',
+    password: passwordHash,
+    name: 'Org Owner',
+    role: 'USER',
+    emailVerified: true,
+    lastLoginAt: new Date(),
   })
 
-  const member1 = await prisma.user.upsert({
-    where: { email: 'member@demo.com' },
-    update: {},
-    create: {
-      email: 'member@demo.com',
-      password: passwordHash,
-      name: 'Team Member',
-      role: 'USER',
-      emailVerified: true,
-      lastLoginAt: new Date(),
-    },
+  const member1 = await upsertUserByEmail('member@demo.com', {
+    email: 'member@demo.com',
+    password: passwordHash,
+    name: 'Team Member',
+    role: 'USER',
+    emailVerified: true,
+    lastLoginAt: new Date(),
   })
 
-  const member2 = await prisma.user.upsert({
-    where: { email: 'member2@demo.com' },
-    update: {},
-    create: {
-      email: 'member2@demo.com',
-      password: passwordHash,
-      name: 'Another Member',
-      role: 'USER',
-      emailVerified: true,
-    },
+  const member2 = await upsertUserByEmail('member2@demo.com', {
+    email: 'member2@demo.com',
+    password: passwordHash,
+    name: 'Another Member',
+    role: 'USER',
+    emailVerified: true,
   })
 
-  const googleUser = await prisma.user.upsert({
-    where: { email: 'google@demo.com' },
-    update: {},
-    create: {
-      email: 'google@demo.com',
-      name: 'Google User',
-      googleId: 'demo-google-123456789',
-      role: 'USER',
-      emailVerified: true,
-      lastLoginAt: new Date(),
-    },
+  const googleUser = await upsertUserByEmail('google@demo.com', {
+    email: 'google@demo.com',
+    name: 'Google User',
+    googleId: 'demo-google-123456789',
+    role: 'USER',
+    emailVerified: true,
+    lastLoginAt: new Date(),
   })
 
   console.log(
@@ -190,6 +185,23 @@ async function main() {
   })
 
   console.log(`  ✓ Organization: ${org.name} (owner + 2 members)`)
+
+  // ── Projects (worked example resource) ─────────────────────────────
+  for (const [name, description] of [
+    ['Website Redesign', 'Example project seeded by prisma/seed.js'],
+    ['Mobile App', 'Second example project'],
+  ]) {
+    const existing = await prisma.project.findFirst({
+      where: { organizationId: org.id, name, deletedAt: null },
+      select: { id: true },
+    })
+    if (!existing) {
+      await prisma.project.create({
+        data: { organizationId: org.id, createdById: owner.id, name, description },
+      })
+    }
+  }
+  console.log('  ✓ Projects: 2 example projects')
 
   // ── Subscriptions ──────────────────────────────────────────────────
   await prisma.subscription.upsert({
@@ -321,6 +333,21 @@ async function main() {
     },
   })
 
+  // Gates GET /api/organizations/:orgId/projects/export on the worked example
+  // resource. Seeded enabled so the example is exercisable out of the box.
+  await prisma.featureFlag.upsert({
+    where: { key: 'projects_export' },
+    update: {},
+    create: {
+      key: 'projects_export',
+      name: 'Projects Export',
+      description: 'Enables the paywalled project export route on the example resource',
+      type: 'BOOLEAN',
+      value: { enabled: true },
+      active: true,
+    },
+  })
+
   await prisma.featureFlag.upsert({
     where: { key: 'new_onboarding_flow' },
     update: {},
@@ -353,7 +380,7 @@ async function main() {
   })
 
   console.log(
-    `  ✓ Feature flags: beta_dashboard, advanced_analytics, new_onboarding_flow (50% rollout)`,
+    `  ✓ Feature flags: beta_dashboard, advanced_analytics, projects_export, new_onboarding_flow (50% rollout)`,
   )
 
   console.log('\n✅ Seed complete!\n')

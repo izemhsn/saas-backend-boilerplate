@@ -101,7 +101,8 @@
     "emailAlreadyInUseChangeEmail": "This email address is already in use. Please request a new change email.",
     "noPasswordSet": "This account has no password set. Please set a password before deleting your account.",
     "resourceConflict": "A resource with this value already exists",
-    "resourceNotFound": "Resource not found"
+    "resourceNotFound": "Resource not found",
+    "projectNotFound": "Project not found"
   },
   "messages": {
     "emailAlreadyVerified": "Email already verified",
@@ -126,7 +127,11 @@
     "notificationMarkedAsRead": "Notification marked as read",
     "notificationsMarkedAsRead": "{count} notification(s) marked as read",
     "notificationDeleted": "Notification deleted",
-    "accountDeletedSuccessfully": "Account deleted successfully"
+    "accountDeletedSuccessfully": "Account deleted successfully",
+    "projectCreated": "Project created successfully",
+    "projectUpdated": "Project updated successfully",
+    "projectDeleted": "Project deleted successfully",
+    "projectsExported": "Projects exported successfully"
   },
   "validation": {
     "atLeastOneField": "At least one field must be provided",
@@ -164,7 +169,9 @@
     "slugFormat": "Slug must be lowercase alphanumeric with hyphens",
     "nameRequired": "Name is required",
     "newOwnerIdRequired": "New owner ID is required",
-    "oauthStateRequired": "OAuth state is required"
+    "oauthStateRequired": "OAuth state is required",
+    "projectNameRequired": "Project name is required",
+    "atLeastOneProjectField": "At least one field must be provided"
   },
   "emails": {
     "verification": {

@@ -12,49 +12,50 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
+  id                       String    @id @default(cuid())
   // email/googleId/pendingEmail are intentionally NOT @unique here — they are
   // enforced by partial unique indexes scoped to live rows (WHERE "deletedAt"
   // IS NULL), created via raw SQL because Prisma's schema language cannot
   // express partial indexes. A soft-deleted user's email must be reusable by
   // a new signup; a plain @unique would make it permanently unusable. See
   // migration 20260823210000_tier2_correctness_and_data_safety.
-  email     String
-  password  String?
-  name      String?
-  googleId  String?
-  role                   Role     @default(USER)
-  emailVerified          Boolean  @default(false)
-  emailVerificationToken String?  @unique
+  email                    String
+  password                 String?
+  name                     String?
+  googleId                 String?
+  role                     Role      @default(USER)
+  emailVerified            Boolean   @default(false)
+  emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
-  pendingEmail           String?
-  passwordResetToken     String?  @unique
-  passwordResetExpires   DateTime?
-  tokenVersion           Int      @default(0)
-  failedLoginAttempts    Int      @default(0)
-  lockedUntil            DateTime?
-  lastLoginAt            DateTime?
-  banned                 Boolean  @default(false)
-  bannedAt               DateTime?
-  suspendedUntil         DateTime?
-  deletedAt              DateTime?
-  twoFactorEnabled       Boolean  @default(false)
-  twoFactorSecret        String?
-  twoFactorBackupCodes   String[]
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  pendingEmail             String?
+  passwordResetToken       String?   @unique
+  passwordResetExpires     DateTime?
+  tokenVersion             Int       @default(0)
+  failedLoginAttempts      Int       @default(0)
+  lockedUntil              DateTime?
+  lastLoginAt              DateTime?
+  banned                   Boolean   @default(false)
+  bannedAt                 DateTime?
+  suspendedUntil           DateTime?
+  deletedAt                DateTime?
+  twoFactorEnabled         Boolean   @default(false)
+  twoFactorSecret          String?
+  twoFactorBackupCodes     String[]
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
-  stripeCustomerId      String?
-  refreshTokens RefreshToken[]
-  memberships  OrganizationMember[]
-  ownedOrganizations Organization[] @relation("OrgOwner")
-  subscriptions Subscription[]
-  apiKeys       ApiKey[]
-  auditLogs     AuditLog[]
-  sentInvitations     OrganizationInvitation[] @relation("InvitationInviter")
-  receivedInvitations OrganizationInvitation[] @relation("InvitationInvitee")
-  notifications       Notification[]
+  stripeCustomerId       String?
+  refreshTokens          RefreshToken[]
+  memberships            OrganizationMember[]
+  ownedOrganizations     Organization[]           @relation("OrgOwner")
+  subscriptions          Subscription[]
+  apiKeys                ApiKey[]
+  auditLogs              AuditLog[]
+  sentInvitations        OrganizationInvitation[] @relation("InvitationInviter")
+  receivedInvitations    OrganizationInvitation[] @relation("InvitationInvitee")
+  notifications          Notification[]
   notificationPreference NotificationPreference?
+  createdProjects        Project[]
 
   twoFactorChallenges TwoFactorChallenge[]
 
@@ -95,18 +96,19 @@ model RefreshToken {
 }
 
 model Organization {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
-  slug      String   @unique
+  slug      String    @unique
   ownerId   String
   deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  owner    User                 @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members  OrganizationMember[]
-  invitations OrganizationInvitation[]
+  owner                User                      @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members              OrganizationMember[]
+  invitations          OrganizationInvitation[]
   featureFlagOverrides OrganizationFeatureFlag[]
+  projects             Project[]
 
   @@map("organizations")
 }
@@ -127,6 +129,34 @@ model OrganizationMember {
   @@map("organization_members")
 }
 
+/// Worked example resource: the reference for how a tenant-scoped,
+/// subscription-gated, feature-flagged resource is wired end to end.
+/// See src/modules/project. Safe to delete wholesale when you build your own
+/// domain model.
+model Project {
+  id             String        @id @default(cuid())
+  organizationId String
+  createdById    String
+  name           String
+  description    String?
+  status         ProjectStatus @default(ACTIVE)
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, deletedAt])
+  @@index([createdById])
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum Role {
   USER
   ADMIN
@@ -139,17 +169,17 @@ enum OrgRole {
 }
 
 model Plan {
-  id            String        @id @default(cuid())
+  id            String       @id @default(cuid())
   name          String
   description   String?
-  stripePriceId String        @unique
+  stripePriceId String       @unique
   priceCents    Int
-  currency      String        @default("usd")
+  currency      String       @default("usd")
   interval      PlanInterval
-  features      Json          @default("{}")
-  active        Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  features      Json         @default("{}")
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   subscriptions Subscription[]
 
@@ -157,10 +187,10 @@ model Plan {
 }
 
 model Subscription {
-  id                   String              @id @default(cuid())
+  id                   String             @id @default(cuid())
   userId               String
   planId               String
-  stripeSubscriptionId String              @unique
+  stripeSubscriptionId String             @unique
   stripeCustomerId     String
   status               SubscriptionStatus
   trialEndsAt          DateTime?
@@ -172,8 +202,8 @@ model Subscription {
   // not be allowed to overwrite state written by a newer one — the webhook
   // handler only applies a write when its event is newer than this value.
   stripeEventCreatedAt DateTime?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan Plan @relation(fields: [planId], references: [id])
@@ -210,18 +240,18 @@ enum SubscriptionStatus {
 }
 
 model ApiKey {
-  id          String    @id @default(cuid())
-  name        String
-  keyHash     String    @unique
-  keyPrefix   String
-  userId      String
-  scopes      String[]  @default([])
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
-  revokedAt   DateTime?
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  userId     String
+  scopes     String[]  @default([])
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -275,19 +305,22 @@ enum AuditAction {
   TWO_FACTOR_ENABLED
   TWO_FACTOR_DISABLED
   SESSION_REVOKED
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_DELETED
   SESSIONS_REVOKED_ALL
 }
 
 model AuditLog {
-  id          String      @id @default(cuid())
-  action      AuditAction
-  userId      String?
-  targetUserId String?
+  id             String      @id @default(cuid())
+  action         AuditAction
+  userId         String?
+  targetUserId   String?
   organizationId String?
-  ipAddress   String?
-  userAgent   String?
-  metadata    Json        @default("{}")
-  createdAt   DateTime    @default(now())
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -308,24 +341,24 @@ enum InvitationStatus {
 }
 
 model OrganizationInvitation {
-  id              String           @id @default(cuid())
-  organizationId  String
-  inviterId       String
-  inviteeEmail    String
-  inviteeId       String?
-  role            OrgRole          @default(MEMBER)
-  status          InvitationStatus @default(PENDING)
-  token           String           @unique
-  expiresAt       DateTime
-  acceptedAt      DateTime?
-  declinedAt      DateTime?
-  canceledAt      DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id             String           @id @default(cuid())
+  organizationId String
+  inviterId      String
+  inviteeEmail   String
+  inviteeId      String?
+  role           OrgRole          @default(MEMBER)
+  status         InvitationStatus @default(PENDING)
+  token          String           @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  declinedAt     DateTime?
+  canceledAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  inviter      User          @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
-  invitee      User?         @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+  inviter      User         @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee      User?        @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([inviteeEmail])
@@ -342,14 +375,14 @@ enum NotificationType {
 }
 
 model Notification {
-  id          String           @id @default(cuid())
-  userId      String
-  type        NotificationType
-  title       String
-  message     String
-  data        Json             @default("{}")
-  readAt      DateTime?
-  createdAt   DateTime         @default(now())
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  data      Json             @default("{}")
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -360,14 +393,14 @@ model Notification {
 }
 
 model NotificationPreference {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  emailEnabled    Boolean  @default(true)
-  pushEnabled     Boolean  @default(true)
-  inAppEnabled    Boolean  @default(true)
-  mutedTypes      String[] @default([])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  emailEnabled Boolean  @default(true)
+  pushEnabled  Boolean  @default(true)
+  inAppEnabled Boolean  @default(true)
+  mutedTypes   String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -397,16 +430,16 @@ model FeatureFlag {
 }
 
 model OrganizationFeatureFlag {
-  id              String   @id @default(cuid())
-  featureFlagId   String
-  organizationId  String
-  enabled         Boolean  @default(true)
-  value           Json     @default("{}")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  featureFlagId  String
+  organizationId String
+  enabled        Boolean  @default(true)
+  value          Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  featureFlag  FeatureFlag   @relation(fields: [featureFlagId], references: [id], onDelete: Cascade)
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  featureFlag  FeatureFlag  @relation(fields: [featureFlagId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([featureFlagId, organizationId])
   @@index([organizationId])

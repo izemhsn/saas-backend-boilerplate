@@ -101,7 +101,8 @@
     "emailAlreadyInUseChangeEmail": "Cette adresse e-mail est déjà utilisée. Veuillez demander un nouveau changement d'e-mail.",
     "noPasswordSet": "Ce compte n'a pas de mot de passe défini. Veuillez définir un mot de passe avant de supprimer votre compte.",
     "resourceConflict": "Une ressource avec cette valeur existe déjà",
-    "resourceNotFound": "Ressource introuvable"
+    "resourceNotFound": "Ressource introuvable",
+    "projectNotFound": "Projet introuvable"
   },
   "messages": {
     "emailAlreadyVerified": "E-mail déjà vérifié",
@@ -126,7 +127,11 @@
     "notificationMarkedAsRead": "Notification marquée comme lue",
     "notificationsMarkedAsRead": "{count} notification(s) marquée(s) comme lue(s)",
     "notificationDeleted": "Notification supprimée",
-    "accountDeletedSuccessfully": "Compte supprimé avec succès"
+    "accountDeletedSuccessfully": "Compte supprimé avec succès",
+    "projectCreated": "Projet créé avec succès",
+    "projectUpdated": "Projet mis à jour avec succès",
+    "projectDeleted": "Projet supprimé avec succès",
+    "projectsExported": "Projets exportés avec succès"
   },
   "validation": {
     "atLeastOneField": "Au moins un champ doit être fourni",
@@ -164,7 +169,9 @@
     "slugFormat": "Le slug doit être alphanumérique minuscule avec des tirets",
     "nameRequired": "Le nom est requis",
     "newOwnerIdRequired": "L'ID du nouveau propriétaire est requis",
-    "oauthStateRequired": "L'état OAuth est requis"
+    "oauthStateRequired": "L'état OAuth est requis",
+    "projectNameRequired": "Le nom du projet est requis",
+    "atLeastOneProjectField": "Au moins un champ doit être fourni"
   },
   "emails": {
     "verification": {

@@ -6,7 +6,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
-[![Tests](https://img.shields.io/badge/tests-412%20passing-brightgreen)](https://github.com/izemhsn/saas-backend-boilerplate/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-444%20passing-brightgreen)](https://github.com/izemhsn/saas-backend-boilerplate/actions/workflows/ci.yml)
 
 A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, Google OAuth, Stripe billing, organizations, role-based access control, rate limiting, background jobs, i18n, and a full integration test suite.
 
@@ -46,7 +46,7 @@ A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, G
 | Validation    | Zod 4                                                      |
 | Logging       | Pino + pino-http                                           |
 | Monitoring    | Sentry                                                     |
-| Testing       | Vitest + Supertest (412 integration tests)                 |
+| Testing       | Vitest + Supertest (444 integration tests)                 |
 | Linting       | ESLint 9 + Prettier                                        |
 | Container     | Docker (multi-stage, non-root)                             |
 | CI/CD         | GitHub Actions (lint → test → build → deploy)              |
@@ -130,13 +130,14 @@ src/
     jobs/          # BullMQ workers (email, maintenance) + cron scheduling
     notification/  # In-app notifications + preferences
     org/           # Organizations, memberships, invitations
+    project/       # Worked example: tenant-scoped resource behind every guard
     session/       # Active session listing + revocation
     shared/        # Email service (Resend + templates)
   utils/           # JWT, hashing, logging, query helpers, secret encryption
   app.js           # Express app (middleware chain, rate limiting, routes)
   server.js        # HTTP server + graceful shutdown + env validation
   worker.js        # Background job worker process
-tests/             # Integration tests (26 files, 412 tests)
+tests/             # Integration tests (28 files, 444 tests)
 prisma/            # Schema, migrations, seed script
 ```
 
@@ -228,6 +229,53 @@ Each module follows the same pattern: `router.js` → `controller.js` → `servi
 
 The webhook handler is idempotent and ordering-safe: each `event.id` is recorded and a redelivered event (Stripe's delivery is at-least-once) is skipped rather than reprocessed, and a subscription write is only applied if it's newer than whichever event last wrote that row (Stripe delivery is also unordered) — a delayed event can't resurrect stale state over a more recent one.
 
+### Projects — the worked example resource
+
+`src/modules/project/` is a deliberately ordinary CRUD resource whose job is to
+show the guard chain composed on **real routes served by the real app**. It is
+the only place `requireSubscription`, `requirePlan`, `requireFeatureFlag`,
+`requireScope` and `requireVerifiedEmail` are wired to live endpoints — copy the
+chains, then delete the module and its `Project` model when you add your own
+domain.
+
+| Method   | Route                                             | Auth    | Guards beyond `authenticate`                             |
+| -------- | ------------------------------------------------- | ------- | -------------------------------------------------------- |
+| `GET`    | `/api/organizations/:orgId/projects`              | JWT     | verified email, org member                               |
+| `GET`    | `/api/organizations/:orgId/projects/export`       | JWT     | + active subscription, Pro/Enterprise plan, feature flag |
+| `GET`    | `/api/organizations/:orgId/projects/:projectId`   | JWT     | verified email, org member                               |
+| `POST`   | `/api/organizations/:orgId/projects`              | JWT     | + `OWNER` or `ADMIN`                                     |
+| `PATCH`  | `/api/organizations/:orgId/projects/:projectId`   | JWT     | + `OWNER` or `ADMIN`                                     |
+| `DELETE` | `/api/organizations/:orgId/projects/:projectId`   | JWT     | + `OWNER` (soft delete)                                  |
+| `GET`    | `/api/integrations/organizations/:orgId/projects` | API key | `projects:read` scope, org member                        |
+
+Guards compose in a fixed order, each depending on what the previous attached to
+the request:
+
+```
+authenticate          → req.user           JWT, tokenVersion, ban/suspend/soft-delete
+requireVerifiedEmail  →                    needs req.user
+requireTenant         → req.tenant         needs req.user + :orgId; proves membership
+requireOrgRole(...)   →                    needs req.tenant
+requireSubscription   → req.subscription
+requirePlan(...)      →                    needs req.subscription
+requireFeatureFlag(k) → req.featureFlag    reads req.tenant + req.subscription
+```
+
+Order matters: a role check that runs before the tenant is resolved is checking
+a role in no particular organization.
+
+Two details worth copying into your own resources:
+
+- **Scope every query by the tenant, not just by id.** `project.service.js`
+  filters on `{ id, organizationId, deletedAt: null }`, so a project id from
+  another org returns 404 rather than leaking that it exists.
+- **The org id comes from `req.tenant`, never from `req.params`.** The guard and
+  the query then cannot disagree about which tenant is in play.
+
+The `/export` route is gated on the `projects_export` feature flag, which
+`npm run db:seed` creates and enables. A missing or inactive flag counts as
+disabled, which is why the CRUD routes above are deliberately not flag-gated.
+
 ### API keys, Sessions, Admin, Audit, Notifications, Feature Flags
 
 | Method   | Route                            | Auth  | Description                        |
@@ -310,7 +358,7 @@ The API is documented with an OpenAPI 3.0.3 spec auto-generated from the Zod val
 | `GET /api/docs`    | OpenAPI 3.0.3 spec as JSON (machine-consumable)       |
 | `GET /api/docs/ui` | Interactive Swagger UI (human-consumable, try-it-out) |
 
-The spec covers all 70+ operations across the 12 modules (Auth, Organizations, Admin, Billing, API Keys, Sessions, Audit, Invitations, Notifications, Feature Flags, GDPR, Health) with:
+The spec covers all 75+ operations across the 13 modules (Auth, Organizations, Projects, Admin, Billing, API Keys, Sessions, Audit, Invitations, Notifications, Feature Flags, GDPR, Health) with:
 
 - Path & query parameters derived from each route's Zod `params`/`query` schema
 - Request bodies derived from each route's Zod `body` schema

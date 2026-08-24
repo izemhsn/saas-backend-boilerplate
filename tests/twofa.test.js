@@ -391,11 +391,25 @@ describe('Two-factor authentication', () => {
       const loginRes = await login(email)
       const challengeToken = loginRes.body.data.challengeToken
 
-      // Generate a code for 40s ago — one 30s TOTP step in the past, well
-      // outside the exact-window match a bare epochTolerance:0 would require.
+      // Generate a code for exactly one 30s step ago.
+      //
+      // The offset must be exactly 30, not "a bit more than 30": TOTP steps are
+      // absolute windows, so an offset of 40s lands two steps back whenever the
+      // current second sits in the first 10s of its step, and epochTolerance
+      // [30, 0] covers only one step back. That made this test fail on a third
+      // of all runs. Subtracting exactly one period always lands one step back,
+      // whatever the current second.
+      //
+      // Guard the boundary too — if the step rolls over between generating the
+      // code and the server verifying it, the code becomes two steps old.
+      const secondsIntoStep = Math.floor(Date.now() / 1000) % 30
+      if (secondsIntoStep > 25) {
+        await new Promise((resolve) => setTimeout(resolve, (31 - secondsIntoStep) * 1000))
+      }
+
       const staleCode = await generate({
         secret: decryptSecret(user.twoFactorSecret),
-        epoch: Math.floor(Date.now() / 1000) - 40,
+        epoch: Math.floor(Date.now() / 1000) - 30,
       })
 
       const res = await request(app)
