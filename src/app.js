@@ -21,6 +21,9 @@ import auditRouter from './modules/audit/audit.router.js'
 import invitationRouter from './modules/org/invitation.router.js'
 import notificationRouter from './modules/notification/notification.router.js'
 import featureFlagRouter from './modules/featureflag/featureflag.router.js'
+import projectRouter, {
+  apiKeyRouter as projectApiKeyRouter,
+} from './modules/project/project.router.js'
 import docsRouter from './modules/docs/docs.router.js'
 import { webhook as billingWebhook } from './modules/billing/billing.controller.js'
 import { prisma } from './config/db.js'
@@ -219,7 +222,15 @@ app.post('/api/auth/2fa/verify', createSensitiveLimiter('2fa-verify'))
 app.use('/api/auth', authRouter)
 
 app.use('/api/organizations', authLimiter)
+// Worked example resource — mounted above orgRouter so the nested :orgId path is
+// matched here first. See src/modules/project/project.router.js for the guard
+// chains this exists to demonstrate.
+app.use('/api/organizations/:orgId/projects', projectRouter)
 app.use('/api/organizations', orgRouter)
+
+// Same resource over API-key auth instead of a JWT.
+app.use('/api/integrations', authLimiter)
+app.use('/api/integrations/organizations/:orgId/projects', projectApiKeyRouter)
 
 app.use('/api/admin', authLimiter)
 app.use('/api/admin', adminRouter)

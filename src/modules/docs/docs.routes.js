@@ -57,6 +57,12 @@ import { createApiKeySchema, keyIdParamSchema, listApiKeysSchema } from '../apik
 import { listSessionsSchema, sessionIdParamSchema } from '../session/session.schema.js'
 import { listAuditLogsSchema, listUserAuditLogsSchema } from '../audit/audit.schema.js'
 import {
+  listProjectsSchema,
+  projectIdSchema,
+  createProjectSchema,
+  updateProjectSchema,
+} from '../project/project.schema.js'
+import {
   listNotificationsSchema,
   notificationIdSchema,
   updatePreferencesSchema,
@@ -88,6 +94,7 @@ const errors = (...codes) =>
 const ERROR_MESSAGES = {
   400: 'Validation error or bad request',
   401: 'Authentication required or invalid credentials',
+  402: 'Payment required — no active subscription',
   403: 'Forbidden — insufficient permissions',
   404: 'Resource not found',
   409: 'Conflict — resource already exists',
@@ -735,6 +742,92 @@ export const operations = [
     responses: {
       ...ok(z.object({ auditLogs: z.array(s.auditLog), pagination: s.pagination })),
       ...errors(401),
+    },
+  },
+
+  // --- Projects (worked example resource) --------------------------------
+  // Demonstrates the full guard chain on real routes. See
+  // src/modules/project/project.router.js.
+  {
+    method: 'GET',
+    path: '/api/organizations/{orgId}/projects',
+    tag: 'Projects',
+    summary: 'List projects',
+    description: 'Requires a verified email and membership of the organization.',
+    security: 'orgRole',
+    request: listProjectsSchema,
+    responses: {
+      ...ok(z.object({ projects: z.array(s.project), meta: s.pagination })),
+      ...errors(400, 401, 403),
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/organizations/{orgId}/projects/export',
+    tag: 'Projects',
+    summary: 'Export all projects',
+    description:
+      'The paywalled example route: requires an active subscription on the Pro or Enterprise plan, with the `projects_export` feature flag enabled for the organization. Returns 402 without a subscription and 403 when the plan or flag does not permit it.',
+    security: 'orgRole',
+    request: listProjectsSchema,
+    responses: {
+      ...ok(z.object({ projects: z.array(s.project), exportedAt: s.isoDate })),
+      ...errors(400, 401, 402, 403),
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/organizations/{orgId}/projects/{projectId}',
+    tag: 'Projects',
+    summary: 'Get a project',
+    description:
+      'Scoped to the tenant resolved from {orgId} — a project belonging to another organization returns 404, not 403.',
+    security: 'orgRole',
+    request: projectIdSchema,
+    responses: { ...ok(z.object({ project: s.project })), ...errors(400, 401, 403, 404) },
+  },
+  {
+    method: 'POST',
+    path: '/api/organizations/{orgId}/projects',
+    tag: 'Projects',
+    summary: 'Create a project',
+    description: 'Requires OWNER or ADMIN role in the organization.',
+    security: 'orgRole',
+    request: createProjectSchema,
+    responses: { ...created(z.object({ project: s.project })), ...errors(400, 401, 403) },
+  },
+  {
+    method: 'PATCH',
+    path: '/api/organizations/{orgId}/projects/{projectId}',
+    tag: 'Projects',
+    summary: 'Update a project',
+    description: 'Requires OWNER or ADMIN role in the organization.',
+    security: 'orgRole',
+    request: updateProjectSchema,
+    responses: { ...ok(z.object({ project: s.project })), ...errors(400, 401, 403, 404) },
+  },
+  {
+    method: 'DELETE',
+    path: '/api/organizations/{orgId}/projects/{projectId}',
+    tag: 'Projects',
+    summary: 'Soft-delete a project',
+    description: 'Requires OWNER role. Sets `deletedAt` instead of hard-deleting.',
+    security: 'orgRole',
+    request: projectIdSchema,
+    responses: { ...noData('Project deleted'), ...errors(400, 401, 403, 404) },
+  },
+  {
+    method: 'GET',
+    path: '/api/integrations/organizations/{orgId}/projects',
+    tag: 'Projects',
+    summary: 'List projects with an API key',
+    description:
+      'The same resource authenticated by `X-API-Key` instead of a JWT. Requires the `projects:read` scope on the key, and the key owner must be a member of the organization.',
+    security: 'apiKey',
+    request: listProjectsSchema,
+    responses: {
+      ...ok(z.object({ projects: z.array(s.project), meta: s.pagination })),
+      ...errors(400, 401, 403),
     },
   },
 
