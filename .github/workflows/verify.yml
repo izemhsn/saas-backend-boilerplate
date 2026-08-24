@@ -1,0 +1,108 @@
+# Reusable verification workflow — lint + the full test suite.
+#
+# This is the single definition of "is this commit good?". It is called by:
+#
+#   ci.yml      — on every push to main/dev and every pull request
+#   deploy.yml  — before anything is published to GHCR
+#
+# Keeping it in one file is what makes the CD gate real: the deploy pipeline
+# runs the *same* checks CI does, rather than trusting that CI ran at all.
+# A `workflow_run` trigger was deliberately not used — CI does not run on tag
+# pushes, so a tag deploy would never have a run to wait for.
+name: Verify
+
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint & format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check Prettier formatting
+        run: npm run format:check
+
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+
+    # PostgreSQL + Redis as service containers — the test job can reach them
+    # on localhost via the default ports. The `pg_isready` health check gates
+    # job start until Postgres is accepting connections.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas-boilerplate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saas-boilerplate_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
+      JWT_REFRESH_SECRET: ci-jwt-refresh-secret-at-least-32-chars
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
+      - name: Run tests with coverage
+        run: npm run test:cov
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
