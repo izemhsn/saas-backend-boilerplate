@@ -1,13 +1,12 @@
 # CI pipeline — runs on every push to main/dev and on pull requests.
-# Jobs run in parallel where possible and gate each other via `needs`:
 #
-#   lint ─┐
-#         ├──► build
-#   test ─┘
+#   verify (lint + test, from verify.yml) ──► build
 #
-# lint  — ESLint + Prettier format check (fast, no DB needed)
-# test  — Vitest suite against PostgreSQL + Redis service containers
-# build — Docker production image build (confirms the Dockerfile is valid)
+# verify — ESLint + Prettier + the Vitest suite against PostgreSQL + Redis.
+#          Defined in the reusable verify.yml so that deploy.yml can run the
+#          exact same checks before publishing an image.
+# build  — Docker production image build + /health smoke test (confirms the
+#          Dockerfile is valid and the server actually boots).
 name: CI
 
 on:
@@ -23,102 +22,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint & format check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Check Prettier formatting
-        run: npm run format:check
-
-  test:
-    name: Test suite
-    runs-on: ubuntu-latest
-
-    # PostgreSQL + Redis as service containers — the test job can reach them
-    # on localhost via the default ports. The `pg_isready` health check gates
-    # job start until Postgres is accepting connections.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: saas-boilerplate_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saas-boilerplate_test
-      REDIS_URL: redis://localhost:6379
-      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
-      JWT_REFRESH_SECRET: ci-jwt-refresh-secret-at-least-32-chars
-      NODE_ENV: test
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-
-      - name: Run database migrations
-        run: npx prisma migrate deploy
-
-      - name: Run tests with coverage
-        run: npm run test:cov
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 7
+  verify:
+    name: Verify
+    uses: ./.github/workflows/verify.yml
 
   build:
     name: Docker build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [verify]
     steps:
       - uses: actions/checkout@v4
 
@@ -159,9 +70,15 @@ jobs:
 
           # Wait for the server to start (or fail within 15s — allow time for
           # the Redis connection to establish before the first request).
-          timeout 15 bash -c 'until curl -sf http://localhost:3001/health > /dev/null 2>&1; do sleep 0.5; done' \
-            && echo "Smoke test passed — server responds on /health" \
-            || { echo "Smoke test failed — server did not start"; docker logs smoke; exit 1; }
+          # Written as if/else rather than `A && B || C`: with the latter, a
+          # failing echo would fall through to the failure branch.
+          if timeout 15 bash -c 'until curl -sf http://localhost:3001/health > /dev/null 2>&1; do sleep 0.5; done'; then
+            echo "Smoke test passed — server responds on /health"
+          else
+            echo "Smoke test failed — server did not start"
+            docker logs smoke
+            exit 1
+          fi
 
           docker stop smoke smoke-redis || true
           docker rm smoke smoke-redis || true

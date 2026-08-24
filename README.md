@@ -49,7 +49,7 @@ A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, G
 | Testing       | Vitest + Supertest (444 integration tests)                 |
 | Linting       | ESLint 9 + Prettier                                        |
 | Container     | Docker (multi-stage, non-root)                             |
-| CI/CD         | GitHub Actions (lint → test → build → deploy)              |
+| CI/CD         | GitHub Actions (verify → build → migrate → deploy)         |
 
 ## Prerequisites
 
@@ -460,23 +460,40 @@ services:
 
 ## CI/CD
 
-Two GitHub Actions workflows live in `.github/workflows/`:
+Three GitHub Actions workflows live in `.github/workflows/`:
+
+### Verify (`verify.yml`)
+
+A reusable workflow (`on: workflow_call`) holding the two jobs that decide whether a commit is good:
+
+| Job    | What it does                                                             |
+| ------ | ------------------------------------------------------------------------ |
+| `lint` | ESLint + Prettier format check                                           |
+| `test` | Vitest suite with coverage against PostgreSQL + Redis service containers |
+
+They run in parallel, and coverage is uploaded as an artifact. Both CI and Deploy call this workflow, so the checks that gate a release are the same ones that gate a pull request — by construction, not by convention.
 
 ### CI (`ci.yml`)
 
-Runs on every push to `main`/`dev` and on pull requests. Three jobs:
+Runs on every push to `main`/`dev` and on pull requests:
 
-| Job     | What it does                                                             |
-| ------- | ------------------------------------------------------------------------ |
-| `lint`  | ESLint + Prettier format check                                           |
-| `test`  | Vitest suite with coverage against PostgreSQL + Redis service containers |
-| `build` | Docker production image build + smoke test (`/health` responds)          |
+```
+verify (lint + test) ──► build
+```
 
-`lint` and `test` run in parallel; `build` waits for both to pass. Coverage reports are uploaded as artifacts.
+`build` produces the production Docker image and smoke-tests it (`/health` responds), and waits for `verify` to pass.
 
 ### Deploy (`deploy.yml`)
 
-Runs on push to `main` or version tags (`v*`). Builds the production Docker image and pushes it to **GitHub Container Registry** (GHCR):
+Runs on push to `main` or version tags (`v*`):
+
+```
+verify ──► build-and-push ──► migrate ──► deploy
+```
+
+**Nothing is published until lint and the full test suite pass.** `build-and-push` depends on `verify`, so a red commit cannot reach GHCR.
+
+Images are pushed to **GitHub Container Registry**:
 
 ```
 ghcr.io/<owner>/<repo>:latest        # latest on main
@@ -485,11 +502,24 @@ ghcr.io/<owner>/<repo>:1.2.3         # semver tag
 ghcr.io/<owner>/<repo>:1.2           # major.minor
 ```
 
+`migrate` runs `prisma migrate deploy` against the production database after the image is built but **before** `deploy` promotes it, so new code never serves traffic against a schema that has not caught up. Two things to know about it:
+
+- It needs a `DATABASE_URL` secret on the `production` environment. Until you set one, the job logs a warning and succeeds, so a fresh fork's first deploy isn't blocked — set it before you rely on this pipeline.
+- Migrations are applied while the **previous** image is still serving. Keep them backward-compatible with the running version: add columns before you stop writing the old ones, and drop them in a later release (expand/contract).
+
 The `deploy` job is a placeholder — uncomment and adapt it for your hosting platform (Fly.io, Railway, Render, Kubernetes, VPS, etc.). See the comments in `deploy.yml` for examples.
+
+Note that a push to `main` runs `verify` twice, once per workflow. That is the deliberate cost of a real gate: the alternative, a `workflow_run` trigger, would leave tag pushes ungated entirely, since CI does not run on tags.
 
 ### Required secrets
 
-The workflows use the built-in `GITHUB_TOKEN` (no extra secrets needed for GHCR). For the deploy step, add platform-specific secrets (e.g. `FLY_API_TOKEN`, `KUBE_CONFIG`) via **Settings → Secrets and variables → Actions**.
+The workflows use the built-in `GITHUB_TOKEN` (no extra secrets needed for GHCR). Add these via **Settings → Environments → production → Secrets**:
+
+| Secret         | Needed by | Purpose                                  |
+| -------------- | --------- | ---------------------------------------- |
+| `DATABASE_URL` | `migrate` | Production database for `migrate deploy` |
+
+Platform-specific deploy secrets (e.g. `FLY_API_TOKEN`, `KUBE_CONFIG`) go in the same place.
 
 ## Internationalization (i18n)
 
