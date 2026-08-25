@@ -41,6 +41,11 @@ model User {
   twoFactorEnabled         Boolean   @default(false)
   twoFactorSecret          String?
   twoFactorBackupCodes     String[]
+  // Highest otplib RFC-6238 timeStep (floor(unixEpoch / period), currently
+  // ~30s buckets) accepted for this user so far. Passed back as
+  // `afterTimeStep` on the next verify() call to reject replay of an
+  // already-used TOTP code within its own 30s window (M16).
+  lastTotpTimeStep         Int?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 

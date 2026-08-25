@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest'
 import request from 'supertest'
 import { generate } from 'otplib'
+import bcrypt from 'bcryptjs'
 import app from '../src/app.js'
 import { prisma } from '../src/config/db.js'
 import { decryptSecret } from '../src/utils/secretCrypto.js'
@@ -509,5 +510,96 @@ describe('Two-factor authentication', () => {
       expect(res.body.data.refreshToken).toBeTypeOf('string')
       expect(res.body.data.twoFactorRequired).toBeUndefined()
     })
+  })
+
+  describe('Backup code hashing (M4)', () => {
+    it('stores newly generated backup codes as sha256 hashes, not bcrypt', async () => {
+      const { email, res: reg } = await registerUser('backup-hash')
+      const token = reg.body.data.token
+
+      await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
+      const user = await prisma.user.findFirst({ where: { email } })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+      await request(app)
+        .post('/api/auth/2fa/enable')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code })
+
+      const updated = await prisma.user.findFirst({ where: { email } })
+      expect(updated.twoFactorBackupCodes).toHaveLength(10)
+      for (const hash of updated.twoFactorBackupCodes) {
+        expect(hash).toMatch(/^[a-f0-9]{64}$/)
+      }
+    }, 30000)
+
+    it('still accepts a legacy bcrypt-hashed backup code issued before this fix', async () => {
+      const { email, res: reg } = await registerUser('backup-legacy')
+      const token = reg.body.data.token
+
+      await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
+      const user = await prisma.user.findFirst({ where: { email } })
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+      await request(app)
+        .post('/api/auth/2fa/enable')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code })
+
+      // Simulate a backup code minted before the M4 fix by overwriting one
+      // stored sha256 hash with a bcrypt hash of a known plaintext code.
+      const legacyCode = 'deadbeefcafe'
+      const legacyHash = await bcrypt.hash(legacyCode, 12)
+      const before = await prisma.user.findFirst({ where: { email } })
+      await prisma.user.update({
+        where: { id: before.id },
+        data: { twoFactorBackupCodes: [legacyHash, ...before.twoFactorBackupCodes.slice(1)] },
+      })
+
+      const loginRes = await login(email)
+      const challengeToken = loginRes.body.data.challengeToken
+
+      const res = await request(app)
+        .post('/api/auth/2fa/verify')
+        .send({ challengeToken, code: legacyCode })
+
+      expect(res.status).toBe(200)
+      expect(res.body.data.backupCodeUsed).toBe(true)
+
+      const afterUse = await prisma.user.findFirst({ where: { email } })
+      expect(afterUse.twoFactorBackupCodes).not.toContain(legacyHash)
+    }, 30000)
+  })
+
+  describe('TOTP replay protection (M16)', () => {
+    it('rejects reusing the same TOTP code across two separate login challenges', async () => {
+      const { email, res: reg } = await registerUser('totp-replay')
+      const token = reg.body.data.token
+
+      await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`)
+      const user = await prisma.user.findFirst({ where: { email } })
+      const enableCode = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+      await request(app)
+        .post('/api/auth/2fa/enable')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: enableCode })
+
+      const firstChallenge = (await login(email)).body.data.challengeToken
+      const code = await generate({ secret: decryptSecret(user.twoFactorSecret) })
+
+      const first = await request(app)
+        .post('/api/auth/2fa/verify')
+        .send({ challengeToken: firstChallenge, code })
+      expect(first.status).toBe(200)
+
+      // Same code, a brand new challenge — must be rejected even though it is
+      // still within its own 30s validity window, because it was already
+      // accepted once (otplib's afterTimeStep).
+      const secondChallenge = (await login(email)).body.data.challengeToken
+      const second = await request(app)
+        .post('/api/auth/2fa/verify')
+        .send({ challengeToken: secondChallenge, code })
+
+      expect(second.status).toBe(401)
+      expect(second.body.message).toContain('Invalid verification code')
+    }, 30000)
   })
 })
