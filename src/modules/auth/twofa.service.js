@@ -1,9 +1,9 @@
-import { randomBytes, createHash } from 'crypto'
+import { randomBytes, createHash, timingSafeEqual } from 'crypto'
 import { generateSecret, verify, generateURI } from 'otplib'
 import QRCode from 'qrcode'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../../config/db.js'
-import { hashPassword, comparePassword } from '../../utils/hash.js'
+import { comparePassword } from '../../utils/hash.js'
 import { signToken } from '../../utils/jwt.js'
 import { httpError } from '../../utils/httpError.js'
 import { encryptSecret, decryptSecret } from '../../utils/secretCrypto.js'
@@ -23,6 +23,27 @@ const ISSUER = process.env.APP_NAME || 'SaaS Boilerplate'
 const TOTP_EPOCH_TOLERANCE = [30, 0]
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
+
+// Backup codes are 96 bits of crypto-random entropy (randomBytes(6)), not a
+// low-entropy user-chosen password, so there's nothing for bcrypt's adaptive
+// cost to protect against here — it only adds ~2.5s of bcrypt-cost-12 CPU per
+// comparison, and verifyChallenge tries up to 10 of them on every failed
+// TOTP, cheaply amplified by an attacker (M4). SHA-256 + a constant-time
+// compare gives the same brute-force resistance (unforgeable without the
+// hash) at negligible cost.
+const hashBackupCode = (code) => createHash('sha256').update(code).digest('hex')
+
+// bcrypt hashes are always 60 chars starting with "$2"; sha256 hex digests
+// are always 64 lowercase hex chars. Detecting the format lets already-issued
+// bcrypt-hashed backup codes (from before this fix) keep working until they
+// are consumed or regenerated, mirroring the legacy-tolerance pattern used
+// for TOTP secrets in utils/secretCrypto.js.
+const compareBackupCode = async (code, hashed) => {
+  if (hashed.startsWith('$2')) return bcrypt.compare(code, hashed)
+  const candidate = Buffer.from(hashBackupCode(code), 'hex')
+  const stored = Buffer.from(hashed, 'hex')
+  return candidate.length === stored.length && timingSafeEqual(candidate, stored)
+}
 
 const userSelect = {
   id: true,
@@ -87,7 +108,7 @@ export const enable = async (userId, { code }) => {
   for (let i = 0; i < BACKUP_CODE_COUNT; i++) {
     const raw = randomBytes(6).toString('hex')
     backupCodes.push(raw)
-    hashedCodes.push(await hashPassword(raw))
+    hashedCodes.push(hashBackupCode(raw))
   }
 
   // Atomic, and bumps tokenVersion + revokes refresh tokens for the same
@@ -135,6 +156,7 @@ export const disable = async (userId, { password }) => {
         twoFactorEnabled: false,
         twoFactorSecret: null,
         twoFactorBackupCodes: [],
+        lastTotpTimeStep: null,
         tokenVersion: { increment: 1 },
       },
     }),
@@ -174,6 +196,7 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
           deletedAt: true,
           twoFactorSecret: true,
           twoFactorBackupCodes: true,
+          lastTotpTimeStep: true,
         },
       },
     },
@@ -202,13 +225,18 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
   // Try TOTP code first, then backup codes.
   // otplib's verify throws on non-numeric tokens (e.g. backup codes), so wrap it.
   let totpValid = false
+  let totpTimeStep
   try {
     const totpResult = await verify({
       token: code,
       secret: decryptSecret(user.twoFactorSecret),
       epochTolerance: TOTP_EPOCH_TOLERANCE,
+      // Rejects a code whose timeStep was already accepted, closing replay of
+      // a shoulder-surfed or phished code within its own 30s window (M16).
+      ...(user.lastTotpTimeStep != null && { afterTimeStep: user.lastTotpTimeStep }),
     })
     totpValid = totpResult.valid
+    if (totpResult.valid) totpTimeStep = totpResult.timeStep
   } catch {
     // Token format is invalid (not a 6-digit TOTP) — fall through to backup codes
   }
@@ -217,7 +245,7 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
   let matchedBackupHash = null
   if (!totpValid) {
     for (const hashed of user.twoFactorBackupCodes) {
-      if (await bcrypt.compare(code, hashed)) {
+      if (await compareBackupCode(code, hashed)) {
         matchedBackupHash = hashed
         break
       }
@@ -259,7 +287,14 @@ export const verifyChallenge = async ({ challengeToken, code }, { userAgent, ipA
 
   const safeUser = await prisma.user.update({
     where: { id: user.id },
-    data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+    data: {
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date(),
+      // Only a TOTP match has a timeStep to pin; a consumed backup code is
+      // already single-use via its removal above.
+      ...(totpTimeStep !== undefined && { lastTotpTimeStep: totpTimeStep }),
+    },
     select: userSelect,
   })
 
