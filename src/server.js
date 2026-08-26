@@ -3,26 +3,12 @@ import app from './app.js'
 import { prisma } from './config/db.js'
 import logger from './utils/logger.js'
 import { getSentry } from './config/sentry.js'
+import { validateEnv } from './config/validateEnv.js'
 
-const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET']
-const missing = REQUIRED_ENV.filter((key) => !process.env[key])
-if (missing.length) {
-  logger.fatal(`Missing required env vars: ${missing.join(', ')}`)
+const envErrors = validateEnv(process.env)
+if (envErrors.length) {
+  for (const message of envErrors) logger.fatal(message)
   process.exit(1)
-}
-
-// In production, JWT secrets must be at least 32 characters and CORS must be set
-if (process.env.NODE_ENV === 'production') {
-  for (const key of ['JWT_SECRET', 'JWT_REFRESH_SECRET']) {
-    if (process.env[key].length < 32) {
-      logger.fatal(`${key} must be at least 32 characters in production`)
-      process.exit(1)
-    }
-  }
-  if (!process.env.CORS_ORIGIN) {
-    logger.fatal('CORS_ORIGIN must be set in production')
-    process.exit(1)
-  }
 }
 
 const PORT = process.env.PORT ?? 3000
