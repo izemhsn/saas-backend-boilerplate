@@ -6,13 +6,15 @@ import { evaluateFlag } from '../modules/featureflag/featureflag.service.js'
 export const requireFeatureFlag = (key) => async (req, res, next) => {
   try {
     const orgId = req.tenant?.id ?? null
-    let planName = null
+    // Matched against PLAN-flag `value.plans` by the plan's immutable `code`,
+    // not its display `name` — same reasoning as requirePlan (audit M11).
+    let planCode = null
 
-    if (req.subscription?.plan?.name) {
-      planName = req.subscription.plan.name
+    if (req.subscription?.plan?.code) {
+      planCode = req.subscription.plan.code
     }
 
-    const result = await evaluateFlag(key, orgId, planName)
+    const result = await evaluateFlag(key, orgId, planCode)
 
     if (!result.enabled) {
       return res.status(403).json({

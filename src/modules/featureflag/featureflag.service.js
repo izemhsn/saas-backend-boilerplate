@@ -140,7 +140,7 @@ export const removeOverride = async (flagId, orgId) => {
 
 // ── Evaluation ──────────────────────────────────────────────────────
 
-export const evaluateFlag = async (key, orgId = null, planName = null) => {
+export const evaluateFlag = async (key, orgId = null, planCode = null) => {
   const flag = await prisma.featureFlag.findUnique({
     where: { key },
     select: { id: true, type: true, value: true, active: true },
@@ -162,7 +162,7 @@ export const evaluateFlag = async (key, orgId = null, planName = null) => {
         flag.type,
         override.value,
         override.enabled,
-        planName,
+        planCode,
         key,
         orgId,
       )
@@ -170,7 +170,7 @@ export const evaluateFlag = async (key, orgId = null, planName = null) => {
     }
   }
 
-  const result = evaluateByType(flag.type, flag.value, true, planName, key, orgId)
+  const result = evaluateByType(flag.type, flag.value, true, planCode, key, orgId)
   return { key, ...result, reason: 'DEFAULT' }
 }
 
@@ -182,7 +182,7 @@ const deterministicBucket = (flagKey, orgId) => {
   return hash.readUInt32BE(0) % 100
 }
 
-const evaluateByType = (type, value, enabled, planName, flagKey, orgId) => {
+const evaluateByType = (type, value, enabled, planCode, flagKey, orgId) => {
   if (!enabled) return { enabled: false }
 
   switch (type) {
@@ -202,7 +202,7 @@ const evaluateByType = (type, value, enabled, planName, flagKey, orgId) => {
     case 'PLAN': {
       const plans = value?.plans ?? []
       if (plans.length === 0) return { enabled: true }
-      return { enabled: planName ? plans.includes(planName) : false }
+      return { enabled: planCode ? plans.includes(planCode) : false }
     }
 
     default:

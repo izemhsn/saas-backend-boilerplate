@@ -139,7 +139,7 @@
     "atLeastOnePreferenceField": "Au moins un champ de préférence doit être fourni",
     "booleanFlagFormat": "Les flags BOOLEAN utilisent { enabled: true/false }",
     "percentageFlagFormat": "Les flags PERCENTAGE utilisent { percentage: 0-100 }",
-    "planFlagFormat": "Les flags PLAN utilisent { plans: [\"Free\", \"Pro\"] }",
+    "planFlagFormat": "Les flags PLAN utilisent { plans: [\"free\", \"pro\"] } — comparaison sur le code du plan, pas son nom",
     "nameMinLength": "Le nom doit comporter au moins 2 caractères",
     "invalidEmail": "Adresse e-mail invalide",
     "passwordMinLength": "Le mot de passe doit comporter au moins 8 caractères",

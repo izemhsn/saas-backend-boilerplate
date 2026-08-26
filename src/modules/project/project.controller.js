@@ -81,3 +81,12 @@ export const exportProjects = async (req, res, next) => {
     next(err)
   }
 }
+
+export const projectAnalytics = async (req, res, next) => {
+  try {
+    const data = await projectService.getProjectAnalytics(req.tenant.id)
+    res.json({ success: true, data: translateResult(req, data) })
+  } catch (err) {
+    next(err)
+  }
+}

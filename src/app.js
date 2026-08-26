@@ -14,7 +14,7 @@ import { i18nMiddleware } from './middleware/i18n.middleware.js'
 import authRouter from './modules/auth/auth.router.js'
 import orgRouter from './modules/org/org.router.js'
 import adminRouter from './modules/admin/admin.router.js'
-import billingRouter from './modules/billing/billing.router.js'
+import billingRouter, { orgRouter as billingOrgRouter } from './modules/billing/billing.router.js'
 import apiKeyRouter from './modules/apikey/apikey.router.js'
 import sessionRouter from './modules/session/session.router.js'
 import auditRouter from './modules/audit/audit.router.js'
@@ -226,6 +226,9 @@ app.use('/api/organizations', authLimiter)
 // matched here first. See src/modules/project/project.router.js for the guard
 // chains this exists to demonstrate.
 app.use('/api/organizations/:orgId/projects', projectRouter)
+// Org-scoped billing (M12) — mounted above orgRouter for the same reason as
+// projectRouter: the nested :orgId/billing path must be matched here first.
+app.use('/api/organizations/:orgId/billing', billingOrgRouter)
 app.use('/api/organizations', orgRouter)
 
 // Same resource over API-key auth instead of a JWT.

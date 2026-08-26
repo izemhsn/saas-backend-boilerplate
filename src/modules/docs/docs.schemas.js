@@ -98,6 +98,9 @@ export const member = z.object({
 export const plan = z.object({
   id: z.string(),
   name: z.string(),
+  // Immutable identifier used for gating (requirePlan, PLAN feature flags) —
+  // never `name`, which is just a display string (audit M11).
+  code: z.string(),
   priceCents: z.number().int(),
   interval: z.enum(['MONTH', 'YEAR']),
   stripePriceId: z.string().nullable(),
