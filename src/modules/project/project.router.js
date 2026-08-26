@@ -2,7 +2,11 @@ import { Router } from 'express'
 import { validate } from '../../middleware/validate.middleware.js'
 import { authenticate, requireVerifiedEmail } from '../../middleware/auth.middleware.js'
 import { requireTenant, requireOrgRole } from '../../middleware/tenant.middleware.js'
-import { requireSubscription, requirePlan } from '../../middleware/subscription.middleware.js'
+import {
+  requireSubscription,
+  requireOrgSubscription,
+  requirePlan,
+} from '../../middleware/subscription.middleware.js'
 import { requireFeatureFlag } from '../../middleware/featureflag.middleware.js'
 import { authenticateApiKey, requireScope } from '../../middleware/apiKey.middleware.js'
 import {
@@ -18,10 +22,10 @@ import * as ctrl from './project.controller.js'
 //
 // This module exists to show every guard composed on real routes served by the
 // real app, not to be a compelling product feature. It is deliberately the only
-// place in the codebase that uses `requireSubscription`, `requirePlan`,
-// `requireFeatureFlag`, `requireScope` and `requireVerifiedEmail` on live
-// routes — copy the chains below for your own resources, then delete this
-// module along with the Project model.
+// place in the codebase that uses `requireSubscription`, `requireOrgSubscription`,
+// `requirePlan`, `requireFeatureFlag`, `requireScope` and `requireVerifiedEmail`
+// on live routes — copy the chains below for your own resources, then delete
+// this module along with the Project model.
 //
 // Guards compose in a fixed order, each one depending on what the previous
 // attached to the request:
@@ -30,8 +34,9 @@ import * as ctrl from './project.controller.js'
 //   requireVerifiedEmail  →              (needs req.user)
 //   requireTenant         → req.tenant   (needs req.user + :orgId; proves membership)
 //   requireOrgRole(...)   →              (needs req.tenant)
-//   requireSubscription   → req.subscription
-//   requirePlan(...)      →              (needs req.subscription)
+//   requireSubscription   → req.subscription  (personal billing — /export)
+//   requireOrgSubscription → req.subscription (org billing, M12 — /analytics; needs req.tenant)
+//   requirePlan(...)      →              (needs req.subscription, from either gate above)
 //   requireFeatureFlag(k) → req.featureFlag  (reads req.tenant + req.subscription)
 //
 // Getting that order wrong is the classic authorization bug: a role check that
@@ -60,9 +65,21 @@ router.get(
   '/export',
   validate(listProjectsSchema),
   requireSubscription,
-  requirePlan('Pro', 'Enterprise'),
+  requirePlan('pro', 'enterprise'),
   requireFeatureFlag('projects_export'),
   ctrl.exportProjects,
+)
+
+// A second premium action, gated the org-billing way instead of the personal
+// way: requireOrgSubscription reads req.tenant (not req.user), so it's the
+// organization's own subscription that must be active — see M12. requirePlan
+// is unmodified and works identically after either gate, since both populate
+// req.subscription in the same shape.
+router.get(
+  '/analytics',
+  requireOrgSubscription,
+  requirePlan('pro', 'enterprise'),
+  ctrl.projectAnalytics,
 )
 
 router.get('/:projectId', validate(projectIdSchema), ctrl.getProject)

@@ -72,8 +72,9 @@ afterAll(async () => {
   }
   await prisma.subscription.deleteMany({ where: { user: { email: { in: createdEmails } } } })
   if (createdPlanIds.length) {
-    // `Plan.name` is not unique (audit M11) and `requirePlan` matches on the
-    // literal name, so this file has to create a plan actually called "Pro".
+    // The router hardcodes requirePlan('pro', 'enterprise'), matched on the
+    // plan's `code` (audit M11 — never `name`, which isn't unique), so this
+    // file has to create a plan whose code is actually "pro"/"enterprise".
     // A test file running in parallel can find it by name and attach its own
     // subscription, and Plan->Subscription is Restrict — so clear anything
     // still pointing at these plans rather than failing the whole teardown.
@@ -300,16 +301,21 @@ describe('Guard: requireSubscription / requirePlan / requireFeatureFlag on /expo
     await prisma.featureFlag.delete({ where: { id: existing.id } })
   }
 
-  // `requirePlan` matches on the literal plan name, so these cannot be given a
-  // per-run suffix the way emails are. Reuse a plan of that name if the seed or
-  // another file already made one, and only track for deletion what we created.
+  // `requirePlan` matches on the plan's `code` (audit M11), so these cannot be
+  // given a per-run suffix the way emails are. Reuse a plan of that code if
+  // the seed or another file already made one, and only track for deletion
+  // what we created.
   const ensurePlan = async (name, priceCents, slug) => {
-    const existing = await prisma.plan.findFirst({ where: { name, active: true } })
+    const existing = await prisma.plan.findFirst({ where: { code: slug, active: true } })
     if (existing) return existing.id
 
     const plan = await prisma.plan.create({
       data: {
         name,
+        // Literal, not RUN_ID-suffixed — the router hardcodes
+        // requirePlan('pro', 'enterprise'), matched on code, so this must be
+        // the exact string it expects. Same reason `name` above is literal.
+        code: slug,
         stripePriceId: `price_proj_${slug}_${RUN_ID}`,
         priceCents,
         currency: 'usd',
@@ -407,6 +413,102 @@ describe('Guard: requireSubscription / requirePlan / requireFeatureFlag on /expo
     expect(res.status).toBe(200)
     expect(Array.isArray(res.body.data.projects)).toBe(true)
     expect(res.body.data.exportedAt).toBeDefined()
+  })
+})
+
+describe('Guard: requireOrgSubscription / requirePlan on /analytics (M12)', () => {
+  let freePlanId
+  let proPlanId
+
+  // Same plans the /export suite above uses (code 'free'/'pro', matching what
+  // the router hardcodes) — reuse them if that suite already created them
+  // rather than assuming describe-block ordering.
+  beforeAll(async () => {
+    const free = await prisma.plan.findFirst({ where: { code: 'free', active: true } })
+    freePlanId =
+      free?.id ??
+      (
+        await prisma.plan.create({
+          data: {
+            name: 'Free',
+            code: 'free',
+            stripePriceId: `price_proj_free_${RUN_ID}_analytics`,
+            priceCents: 0,
+            currency: 'usd',
+            interval: 'MONTH',
+            active: true,
+          },
+        })
+      ).id
+    if (!free) createdPlanIds.push(freePlanId)
+
+    const pro = await prisma.plan.findFirst({ where: { code: 'pro', active: true } })
+    proPlanId =
+      pro?.id ??
+      (
+        await prisma.plan.create({
+          data: {
+            name: 'Pro',
+            code: 'pro',
+            stripePriceId: `price_proj_pro_${RUN_ID}_analytics`,
+            priceCents: 1999,
+            currency: 'usd',
+            interval: 'MONTH',
+            active: true,
+          },
+        })
+      ).id
+    if (!pro) createdPlanIds.push(proPlanId)
+  })
+
+  // Unlike /export's `subscribe` (scoped to userId), the subscription here
+  // belongs to the organization itself — the whole point of requireOrgSubscription.
+  const subscribeOrg = (organizationId, planId) =>
+    prisma.subscription.create({
+      data: {
+        organizationId,
+        planId,
+        status: 'ACTIVE',
+        stripeSubscriptionId: `sub_org_${organizationId}_${Date.now()}`,
+        stripeCustomerId: `cus_org_${organizationId}`,
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+      },
+    })
+
+  it('returns 402 without an active org subscription', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/projects/analytics`)
+      .set('Authorization', `Bearer ${owner.token}`)
+
+    expect(res.status).toBe(402)
+  })
+
+  it('returns 403 with an org subscription on the wrong plan', async () => {
+    const org = await createOrg(owner.token, 'analytics-free')
+    await subscribeOrg(org, freePlanId)
+
+    const res = await request(app)
+      .get(`/api/organizations/${org}/projects/analytics`)
+      .set('Authorization', `Bearer ${owner.token}`)
+
+    expect(res.status).toBe(403)
+  })
+
+  it("returns 200 with the org's own Pro subscription, ignoring the caller's personal plan", async () => {
+    const org = await createOrg(owner.token, 'analytics-pro')
+    await subscribeOrg(org, proPlanId)
+    await createProject(owner.token, org, 'Analytics Project')
+
+    // The owner has no *personal* subscription anywhere in this suite — only
+    // the organization does. A pass here proves the gate reads req.tenant,
+    // not req.user.
+    const res = await request(app)
+      .get(`/api/organizations/${org}/projects/analytics`)
+      .set('Authorization', `Bearer ${owner.token}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.total).toBeGreaterThanOrEqual(1)
+    expect(res.body.data.byStatus.ACTIVE).toBeGreaterThanOrEqual(1)
   })
 })
 

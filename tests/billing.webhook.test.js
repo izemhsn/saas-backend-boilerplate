@@ -141,6 +141,7 @@ describe('POST /api/billing/webhook (idempotency + ordering — H5)', () => {
     const plan = await prisma.plan.create({
       data: {
         name: `Webhook Test Plan ${RUN_ID}`,
+        code: `webhook-h5-${RUN_ID}`,
         stripePriceId: `price_webhook_h5_${RUN_ID}`,
         priceCents: 999,
         interval: 'MONTH',
@@ -245,5 +246,83 @@ describe('POST /api/billing/webhook (idempotency + ordering — H5)', () => {
 
     const final = await prisma.subscription.findUnique({ where: { stripeSubscriptionId } })
     expect(final.status).toBe('CANCELED')
+  })
+})
+
+// M12 — the same webhook handler must also create/update subscriptions scoped
+// to an organizationId instead of a userId, since org-scoped checkout sets
+// only `organizationId` in Stripe metadata (never both — see billing.service.js).
+describe('POST /api/billing/webhook (org-scoped subscriptions — M12)', () => {
+  let organizationId
+  let ownerId
+  let planId
+
+  beforeAll(async () => {
+    const owner = await prisma.user.create({
+      data: { email: `webhook-org-owner-${RUN_ID}@example.com`, name: 'Webhook Org Owner' },
+    })
+    ownerId = owner.id
+
+    const org = await prisma.organization.create({
+      data: { name: 'Webhook Org', slug: `webhook-org-${RUN_ID}`, ownerId },
+    })
+    organizationId = org.id
+
+    const plan = await prisma.plan.create({
+      data: {
+        name: `Webhook Org Test Plan ${RUN_ID}`,
+        code: `webhook-org-${RUN_ID}`,
+        stripePriceId: `price_webhook_org_${RUN_ID}`,
+        priceCents: 999,
+        interval: 'MONTH',
+      },
+    })
+    planId = plan.id
+  })
+
+  afterAll(async () => {
+    await prisma.subscription.deleteMany({ where: { organizationId } })
+    await prisma.plan.delete({ where: { id: planId } })
+    await prisma.organization.delete({ where: { id: organizationId } })
+    await prisma.user.delete({ where: { id: ownerId } })
+  })
+
+  const orgSubscriptionEvent = ({ eventId, created, status, stripeSubscriptionId }) => ({
+    id: eventId,
+    object: 'event',
+    type: 'customer.subscription.updated',
+    created,
+    data: {
+      object: {
+        id: stripeSubscriptionId,
+        customer: `cus_org_${RUN_ID}`,
+        status,
+        trial_end: null,
+        canceled_at: null,
+        current_period_start: created,
+        current_period_end: created + 30 * 24 * 60 * 60,
+        // No userId — organizationId alone identifies the owner.
+        metadata: { organizationId, planId },
+      },
+    },
+  })
+
+  it('creates a Subscription scoped to organizationId, with userId left null', async () => {
+    const stripeSubscriptionId = `sub_org_webhook_${RUN_ID}`
+
+    const res = await sendEvent(
+      orgSubscriptionEvent({
+        eventId: `evt_org_webhook_${RUN_ID}`,
+        created: 1_800_000_000,
+        status: 'active',
+        stripeSubscriptionId,
+      }),
+    )
+    expect(res.status).toBe(200)
+
+    const sub = await prisma.subscription.findUnique({ where: { stripeSubscriptionId } })
+    expect(sub.status).toBe('ACTIVE')
+    expect(sub.organizationId).toBe(organizationId)
+    expect(sub.userId).toBeNull()
   })
 })

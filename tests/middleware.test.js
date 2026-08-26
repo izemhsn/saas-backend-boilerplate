@@ -42,6 +42,7 @@ beforeAll(async () => {
   proPlan = await prisma.plan.create({
     data: {
       name: `Pro-mw-${RUN_ID}`,
+      code: `pro-mw-${RUN_ID}`,
       description: 'Middleware test Pro plan',
       stripePriceId: `price_mw_pro_${RUN_ID}`,
       priceCents: 1999,
@@ -54,6 +55,7 @@ beforeAll(async () => {
   freePlan = await prisma.plan.create({
     data: {
       name: `Free-mw-${RUN_ID}`,
+      code: `free-mw-${RUN_ID}`,
       description: 'Middleware test Free plan',
       stripePriceId: `price_mw_free_${RUN_ID}`,
       priceCents: 0,
@@ -215,7 +217,7 @@ describe('requireSubscription middleware', () => {
 
 describe('requirePlan middleware', () => {
   it('returns 402 when no subscription context exists', async () => {
-    const testApp = buildApp(requirePlan('Pro'))
+    const testApp = buildApp(requirePlan('pro'))
     const res = await request(testApp).get('/test')
     expect(res.status).toBe(402)
     expect(res.body.message).toMatch(/active subscription required/i)
@@ -243,7 +245,7 @@ describe('requirePlan middleware', () => {
         next()
       },
       requireSubscription,
-      requirePlan(proPlan.name),
+      requirePlan(proPlan.code),
     )
     const res = await request(testApp).get('/test')
     expect(res.status).toBe(403)
@@ -272,7 +274,7 @@ describe('requirePlan middleware', () => {
         next()
       },
       requireSubscription,
-      requirePlan(proPlan.name),
+      requirePlan(proPlan.code),
     )
     const res = await request(testApp).get('/test')
     expect(res.status).toBe(200)

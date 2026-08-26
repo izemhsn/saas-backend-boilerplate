@@ -47,6 +47,7 @@ async function createLiveSubscription(userId, status = 'ACTIVE') {
   const plan = await prisma.plan.create({
     data: {
       name: `Stripe Cancel Test Plan ${unique}`,
+      code: `stripe-cancel-${unique}`,
       stripePriceId: `price_stripe_cancel_${unique}`,
       priceCents: 999,
       interval: 'MONTH',
