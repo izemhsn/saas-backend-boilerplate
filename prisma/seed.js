@@ -57,6 +57,7 @@ async function main() {
     update: {},
     create: {
       name: 'Free',
+      code: 'free',
       description: 'Perfect for getting started',
       stripePriceId: 'price_free_demo',
       priceCents: 0,
@@ -72,6 +73,7 @@ async function main() {
     update: {},
     create: {
       name: 'Pro',
+      code: 'pro',
       description: 'For growing teams',
       stripePriceId: 'price_pro_demo',
       priceCents: 2900,
@@ -87,6 +89,7 @@ async function main() {
     update: {},
     create: {
       name: 'Enterprise',
+      code: 'enterprise',
       description: 'For large organizations',
       stripePriceId: 'price_enterprise_demo',
       priceCents: 9900,
@@ -328,7 +331,9 @@ async function main() {
       name: 'Advanced Analytics',
       description: 'Plan-gated analytics feature (Pro and Enterprise only)',
       type: 'PLAN',
-      value: { plans: ['Pro', 'Enterprise'] },
+      // Matched against the plan's immutable `code`, not its display `name`
+      // (audit M11) — see subscription.middleware.js's requirePlan.
+      value: { plans: ['pro', 'enterprise'] },
       active: true,
     },
   })

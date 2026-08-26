@@ -139,7 +139,7 @@
     "atLeastOnePreferenceField": "At least one preference field must be provided",
     "booleanFlagFormat": "BOOLEAN flags use { enabled: true/false }",
     "percentageFlagFormat": "PERCENTAGE flags use { percentage: 0-100 }",
-    "planFlagFormat": "PLAN flags use { plans: [\"Free\", \"Pro\"] }",
+    "planFlagFormat": "PLAN flags use { plans: [\"free\", \"pro\"] } — matched by plan code, not display name",
     "nameMinLength": "Name must be at least 2 characters",
     "invalidEmail": "Invalid email address",
     "passwordMinLength": "Password must be at least 8 characters",

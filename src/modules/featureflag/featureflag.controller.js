@@ -109,23 +109,35 @@ export const removeOverride = async (req, res, next) => {
 export const evaluateFlag = async (req, res, next) => {
   try {
     const { key, orgId } = req.validated.query
-    let planName = null
+    let planCode = null
 
     if (orgId) {
-      // Use the org owner's subscription to determine the plan — not just any
-      // member's subscription (a Free org with one Pro member should evaluate as Free)
-      const sub = await prisma.subscription.findFirst({
-        where: {
-          user: { ownedOrganizations: { some: { id: orgId } } },
-          status: { in: ['ACTIVE', 'TRIALING'] },
-        },
-        select: { plan: { select: { name: true } } },
+      // Prefer the organization's own subscription (M12, org-level billing).
+      // Fall back to the org owner's personal subscription for orgs that
+      // predate org billing — never just any member's, or a Free org with
+      // one Pro member would incorrectly evaluate as Pro.
+      const orgSub = await prisma.subscription.findFirst({
+        where: { organizationId: orgId, status: { in: ['ACTIVE', 'TRIALING'] } },
+        select: { plan: { select: { code: true } } },
         orderBy: { createdAt: 'desc' },
       })
-      planName = sub?.plan?.name ?? null
+
+      if (orgSub) {
+        planCode = orgSub.plan.code
+      } else {
+        const ownerSub = await prisma.subscription.findFirst({
+          where: {
+            user: { ownedOrganizations: { some: { id: orgId } } },
+            status: { in: ['ACTIVE', 'TRIALING'] },
+          },
+          select: { plan: { select: { code: true } } },
+          orderBy: { createdAt: 'desc' },
+        })
+        planCode = ownerSub?.plan?.code ?? null
+      }
     }
 
-    const data = await flagService.evaluateFlag(key, orgId, planName)
+    const data = await flagService.evaluateFlag(key, orgId, planCode)
     res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)

@@ -26,6 +26,7 @@ beforeAll(async () => {
   const free = await prisma.plan.create({
     data: {
       name: 'Free',
+      code: `free-${RUN_ID}`,
       description: 'Free tier',
       stripePriceId: `price_free_${RUN_ID}`,
       priceCents: 0,
@@ -38,6 +39,7 @@ beforeAll(async () => {
   const pro = await prisma.plan.create({
     data: {
       name: 'Pro',
+      code: `pro-${RUN_ID}`,
       description: 'Pro tier',
       stripePriceId: `price_pro_${RUN_ID}`,
       priceCents: 1999,
@@ -50,6 +52,7 @@ beforeAll(async () => {
   const enterprise = await prisma.plan.create({
     data: {
       name: 'Enterprise',
+      code: `enterprise-${RUN_ID}`,
       description: 'Enterprise tier',
       stripePriceId: `price_ent_${RUN_ID}`,
       priceCents: 9999,

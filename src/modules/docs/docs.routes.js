@@ -627,6 +627,46 @@ export const operations = [
     responses: { ...ok(z.object({ subscription: s.subscription })), ...errors(401, 404) },
   },
 
+  // --- Org-scoped billing (M12) --------------------------------------------
+  {
+    method: 'GET',
+    path: '/api/organizations/{orgId}/billing/subscription',
+    tag: 'Billing',
+    summary: "Get the organization's current subscription",
+    description: 'Any member of the organization may read it.',
+    security: 'bearer',
+    responses: { ...ok(z.object({ subscription: s.subscription })), ...errors(401, 403, 404) },
+  },
+  {
+    method: 'POST',
+    path: '/api/organizations/{orgId}/billing/checkout',
+    tag: 'Billing',
+    summary: 'Create a Stripe Checkout session for the organization',
+    description: 'OWNER/ADMIN only — the resulting subscription belongs to the organization.',
+    security: 'bearer',
+    request: checkoutSchema,
+    responses: { ...ok(s.checkoutData, 'Checkout URL'), ...errors(400, 401, 403, 404) },
+  },
+  {
+    method: 'POST',
+    path: '/api/organizations/{orgId}/billing/portal',
+    tag: 'Billing',
+    summary: 'Create a Stripe Billing Portal session for the organization',
+    description: 'OWNER/ADMIN only.',
+    security: 'bearer',
+    request: portalSchema,
+    responses: { ...ok(s.portalData, 'Portal URL'), ...errors(400, 401, 403, 404) },
+  },
+  {
+    method: 'POST',
+    path: '/api/organizations/{orgId}/billing/cancel',
+    tag: 'Billing',
+    summary: "Cancel the organization's current subscription",
+    description: 'OWNER/ADMIN only.',
+    security: 'bearer',
+    responses: { ...ok(z.object({ subscription: s.subscription })), ...errors(401, 403, 404) },
+  },
+
   // --- API keys ----------------------------------------------------------
   {
     method: 'POST',
@@ -773,6 +813,21 @@ export const operations = [
     responses: {
       ...ok(z.object({ projects: z.array(s.project), exportedAt: s.isoDate })),
       ...errors(400, 401, 402, 403),
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/organizations/{orgId}/projects/analytics',
+    tag: 'Projects',
+    summary: 'Project analytics (org-billed example route)',
+    description:
+      'A second paywalled example route (M12): requires an active subscription owned by the *organization* rather than the caller personally — see requireOrgSubscription. Returns 402 without one and 403 off-plan.',
+    security: 'orgRole',
+    responses: {
+      ...ok(
+        z.object({ total: z.number().int(), byStatus: z.record(z.string(), z.number().int()) }),
+      ),
+      ...errors(401, 402, 403),
     },
   },
   {

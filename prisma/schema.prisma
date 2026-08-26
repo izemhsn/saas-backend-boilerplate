@@ -64,6 +64,7 @@ model User {
 
   twoFactorChallenges TwoFactorChallenge[]
 
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -101,20 +102,25 @@ model RefreshToken {
 }
 
 model Organization {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  ownerId   String
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  name             String
+  slug             String    @unique
+  ownerId          String
+  // Set the first time the org starts a checkout (org-scoped billing, M12) —
+  // mirrors User.stripeCustomerId, which is the equivalent for personal billing.
+  stripeCustomerId String?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   owner                User                      @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members              OrganizationMember[]
   invitations          OrganizationInvitation[]
   featureFlagOverrides OrganizationFeatureFlag[]
   projects             Project[]
+  subscriptions        Subscription[]
 
+  @@index([ownerId])
   @@map("organizations")
 }
 
@@ -176,6 +182,14 @@ enum OrgRole {
 model Plan {
   id            String       @id @default(cuid())
   name          String
+  // Stable, immutable identifier used for access-control decisions —
+  // subscription.middleware.js's requirePlan and PLAN-type feature flags
+  // match on this, never on `name` (audit M11). `name` is a display string
+  // adopters will rename; gating on it meant a rename could silently revoke
+  // or grant paid access. Existing rows predating this column were
+  // backfilled with their `id` (see the migration) since `name` had
+  // duplicates in this dataset; give new plans a real slug ("pro", "enterprise").
+  code          String       @unique
   description   String?
   stripePriceId String       @unique
   priceCents    Int
@@ -193,7 +207,12 @@ model Plan {
 
 model Subscription {
   id                   String             @id @default(cuid())
-  userId               String
+  // Exactly one of userId/organizationId is set: personal billing scopes to
+  // a user, org (B2B) billing scopes to an organization (M12). Prisma's
+  // schema language can't express cross-column exclusivity, so a raw-SQL
+  // CHECK constraint in the migration enforces it at the DB level too.
+  userId               String?
+  organizationId       String?
   planId               String
   stripeSubscriptionId String             @unique
   stripeCustomerId     String
@@ -210,10 +229,12 @@ model Subscription {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan Plan @relation(fields: [planId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan          @relation(fields: [planId], references: [id])
 
   @@index([userId])
+  @@index([organizationId])
   @@map("subscriptions")
 }
 
@@ -365,9 +386,14 @@ model OrganizationInvitation {
   inviter      User         @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
   invitee      User?        @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
 
-  @@index([organizationId])
+  // inviteeEmail alone serves listMyInvitations (no organizationId in that
+  // query's where-clause). The composite below serves createInvitation's
+  // pending-duplicate check and listInvitations, both filtered on
+  // organizationId — its leftmost prefix also covers plain organizationId
+  // lookups, so the old standalone [organizationId] and [status] indexes
+  // (audit M13) were redundant with it and are dropped in the migration.
   @@index([inviteeEmail])
-  @@index([status])
+  @@index([organizationId, inviteeEmail, status])
   @@map("organization_invitations")
 }
 

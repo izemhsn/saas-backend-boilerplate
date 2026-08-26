@@ -113,3 +113,23 @@ export const exportProjects = async (organizationId) => {
 
   return { projects, exportedAt: new Date().toISOString(), messageKey: 'messages.projectsExported' }
 }
+
+// The second premium action, behind requireOrgSubscription + requirePlan
+// (org-level billing, M12) instead of the personal-billing pair above. Like
+// exportProjects, the payload is intentionally minimal — this exists to
+// demonstrate the guard chain, not to be a real analytics feature.
+export const getProjectAnalytics = async (organizationId) => {
+  const [total, byStatus] = await Promise.all([
+    prisma.project.count({ where: { organizationId, deletedAt: null } }),
+    prisma.project.groupBy({
+      by: ['status'],
+      where: { organizationId, deletedAt: null },
+      _count: true,
+    }),
+  ])
+
+  return {
+    total,
+    byStatus: Object.fromEntries(byStatus.map((row) => [row.status, row._count])),
+  }
+}

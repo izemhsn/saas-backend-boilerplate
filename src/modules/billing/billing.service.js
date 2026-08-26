@@ -9,6 +9,7 @@ import logger from '../../utils/logger.js'
 const planSelect = {
   id: true,
   name: true,
+  code: true,
   description: true,
   stripePriceId: true,
   priceCents: true,
@@ -76,6 +77,39 @@ export const getSubscription = async (userId) => {
   return { subscription: subscription ?? null }
 }
 
+// Shared by the personal and org checkout flows: reuses a stored Stripe
+// customer id if it still resolves, (re)creates one otherwise, and persists
+// a newly created id via the caller-supplied `persist` callback. Pulled out
+// because org-scoped billing (M12) needs the identical retrieve-or-create
+// dance against Organization.stripeCustomerId instead of User.stripeCustomerId.
+const resolveStripeCustomerId = async ({ existingCustomerId, email, name, metadata, persist }) => {
+  let customerId = existingCustomerId
+
+  if (customerId) {
+    try {
+      await stripe.customers.retrieve(customerId)
+    } catch (err) {
+      // Only treat "resource_missing" (deleted/invalid customer) as a signal to
+      // recreate — re-throw network errors, rate limits, and other transient issues
+      // so they surface instead of silently creating duplicate customers
+      if (err?.code !== 'resource_missing') throw err
+      customerId = null
+    }
+  }
+
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: email ?? undefined,
+      name: name ?? undefined,
+      metadata,
+    })
+    customerId = customer.id
+    await persist(customerId)
+  }
+
+  return customerId
+}
+
 export const createCheckoutSession = async (userId, { planId, successUrl, cancelUrl }) => {
   const plan = await prisma.plan.findUnique({
     where: { id: planId, active: true },
@@ -93,32 +127,13 @@ export const createCheckoutSession = async (userId, { planId, successUrl, cancel
   })
   if (!user) throw httpError('errors.userNotFound', 404)
 
-  let customerId = user.stripeCustomerId
-
-  if (customerId) {
-    try {
-      await stripe.customers.retrieve(customerId)
-    } catch (err) {
-      // Only treat "resource_missing" (deleted/invalid customer) as a signal to
-      // recreate — re-throw network errors, rate limits, and other transient issues
-      // so they surface instead of silently creating duplicate customers
-      if (err?.code !== 'resource_missing') throw err
-      customerId = null
-    }
-  }
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      name: user.name ?? undefined,
-      metadata: { userId: user.id },
-    })
-    customerId = customer.id
-    await prisma.user.update({
-      where: { id: userId },
-      data: { stripeCustomerId: customerId },
-    })
-  }
+  const customerId = await resolveStripeCustomerId({
+    existingCustomerId: user.stripeCustomerId,
+    email: user.email,
+    name: user.name,
+    metadata: { userId: user.id },
+    persist: (id) => prisma.user.update({ where: { id: userId }, data: { stripeCustomerId: id } }),
+  })
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
@@ -133,6 +148,116 @@ export const createCheckoutSession = async (userId, { planId, successUrl, cancel
   })
 
   return { url: session.url, sessionId: session.id }
+}
+
+// ── Org-scoped billing (M12) ──────────────────────────────────────────────
+// Mirrors the personal flow above, scoped to an Organization instead of a
+// User: the Stripe customer, and the Subscription it eventually produces via
+// the webhook, both key on organizationId. Callers are expected to have
+// already run requireTenant + requireOrgRole('OWNER', 'ADMIN') — these
+// functions trust the organizationId they're given.
+
+export const getOrgSubscription = async (organizationId) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { organizationId, status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] } },
+    select: subscriptionSelect,
+    orderBy: { createdAt: 'desc' },
+  })
+
+  return { subscription: subscription ?? null }
+}
+
+export const createOrgCheckoutSession = async (
+  organizationId,
+  { planId, successUrl, cancelUrl },
+) => {
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId, active: true },
+    select: { id: true, stripePriceId: true, name: true },
+  })
+  if (!plan) throw httpError('errors.planNotFound', 404)
+
+  if (!isStripeConfigured()) {
+    throw httpError('errors.stripeNotConfigured', 500)
+  }
+
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      stripeCustomerId: true,
+      owner: { select: { email: true } },
+    },
+  })
+  if (!org) throw httpError('errors.organizationNotFound', 404)
+
+  const customerId = await resolveStripeCustomerId({
+    existingCustomerId: org.stripeCustomerId,
+    email: org.owner.email,
+    name: org.name,
+    metadata: { organizationId: org.id },
+    persist: (id) =>
+      prisma.organization.update({ where: { id: organizationId }, data: { stripeCustomerId: id } }),
+  })
+
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: 'subscription',
+    line_items: [{ price: plan.stripePriceId, quantity: 1 }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: { organizationId: org.id, planId: plan.id },
+    subscription_data: {
+      metadata: { organizationId: org.id, planId: plan.id },
+    },
+  })
+
+  return { url: session.url, sessionId: session.id }
+}
+
+export const createOrgPortalSession = async (organizationId, { returnUrl }) => {
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { stripeCustomerId: true },
+  })
+  if (!org) throw httpError('errors.organizationNotFound', 404)
+  if (!org.stripeCustomerId) {
+    throw httpError('errors.noBillingAccount', 400)
+  }
+
+  if (!isStripeConfigured()) {
+    throw httpError('errors.stripeNotConfigured', 500)
+  }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: org.stripeCustomerId,
+    return_url: returnUrl,
+  })
+
+  return { url: session.url }
+}
+
+export const cancelOrgSubscription = async (organizationId) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { organizationId, status: { in: ['ACTIVE', 'TRIALING'] } },
+    orderBy: { createdAt: 'desc' },
+  })
+  if (!subscription) throw httpError('errors.noActiveSubscription', 404)
+
+  if (!isStripeConfigured()) {
+    throw httpError('errors.stripeNotConfigured', 500)
+  }
+
+  await stripe.subscriptions.cancel(subscription.stripeSubscriptionId)
+
+  const updated = await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: { status: 'CANCELED', canceledAt: new Date() },
+    select: subscriptionSelect,
+  })
+
+  return { subscription: updated }
 }
 
 export const createPortalSession = async (userId, { returnUrl }) => {
@@ -237,11 +362,13 @@ export const handleWebhook = async (rawBody, signature) => {
 }
 
 const handleCheckoutCompleted = async (session, eventId, eventCreated) => {
-  const { userId, planId } = session.metadata ?? {}
-  if (!userId || !planId) {
+  // Exactly one of userId/organizationId is present — createCheckoutSession
+  // and createOrgCheckoutSession each set only their own (M12).
+  const { userId, organizationId, planId } = session.metadata ?? {}
+  if ((!userId && !organizationId) || !planId) {
     logger.warn(
       { eventId, sessionId: session.id },
-      'checkout.session.completed missing userId/planId metadata — skipped',
+      'checkout.session.completed missing owner/planId metadata — skipped',
     )
     return
   }
@@ -249,35 +376,35 @@ const handleCheckoutCompleted = async (session, eventId, eventCreated) => {
   const stripeSubscriptionId = session.subscription
   if (!stripeSubscriptionId) {
     logger.warn(
-      { eventId, userId, sessionId: session.id },
+      { eventId, userId, organizationId, sessionId: session.id },
       'checkout.session.completed has no subscription id — skipped',
     )
     return
   }
 
   const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId)
-  await upsertSubscription(userId, planId, stripeSub, eventCreated)
+  await upsertSubscription({ userId, organizationId }, planId, stripeSub, eventCreated)
 }
 
 const handleSubscriptionUpdated = async (stripeSub, eventId, eventCreated) => {
-  const { userId, planId } = stripeSub.metadata ?? {}
-  if (!userId || !planId) {
+  const { userId, organizationId, planId } = stripeSub.metadata ?? {}
+  if ((!userId && !organizationId) || !planId) {
     logger.warn(
       { eventId, stripeSubscriptionId: stripeSub.id },
-      'Subscription event missing userId/planId metadata — skipped',
+      'Subscription event missing owner/planId metadata — skipped',
     )
     return
   }
 
-  await upsertSubscription(userId, planId, stripeSub, eventCreated)
+  await upsertSubscription({ userId, organizationId }, planId, stripeSub, eventCreated)
 }
 
 const handleSubscriptionDeleted = async (stripeSub) => {
-  // Read the owning user first (needed for the audit log) — updateMany
-  // alone doesn't return the rows it touched.
+  // Read the owner first (needed for the audit log) — updateMany alone
+  // doesn't return the rows it touched.
   const existing = await prisma.subscription.findUnique({
     where: { stripeSubscriptionId: stripeSub.id },
-    select: { userId: true },
+    select: { userId: true, organizationId: true },
   })
 
   const result = await prisma.subscription.updateMany({
@@ -288,12 +415,15 @@ const handleSubscriptionDeleted = async (stripeSub) => {
   if (result.count > 0 && existing) {
     auditLog('SUBSCRIPTION_CANCELED', {
       userId: existing.userId,
+      organizationId: existing.organizationId,
       metadata: { stripeSubscriptionId: stripeSub.id, source: 'webhook' },
     })
   }
 }
 
-const upsertSubscription = async (userId, planId, stripeSub, eventCreated) => {
+// `owner` is `{ userId }` or `{ organizationId }` — never both, matching the
+// Subscription.userId/organizationId exclusivity the DB enforces (M12).
+const upsertSubscription = async (owner, planId, stripeSub, eventCreated) => {
   const plan = await prisma.plan.findUnique({ where: { id: planId }, select: { id: true } })
   if (!plan) {
     logger.warn(
@@ -314,7 +444,8 @@ const upsertSubscription = async (userId, planId, stripeSub, eventCreated) => {
   const stripeEventCreatedAt = eventCreated ? new Date(eventCreated * 1000) : new Date()
 
   const data = {
-    userId,
+    userId: owner.userId ?? null,
+    organizationId: owner.organizationId ?? null,
     planId,
     stripeSubscriptionId: stripeSub.id,
     stripeCustomerId: stripeSub.customer,
@@ -341,7 +472,8 @@ const upsertSubscription = async (userId, planId, stripeSub, eventCreated) => {
 
   if (updateResult.count > 0) {
     auditLog('SUBSCRIPTION_UPDATED', {
-      userId,
+      userId: owner.userId,
+      organizationId: owner.organizationId,
       metadata: { stripeSubscriptionId: stripeSub.id, status: data.status },
     })
     return
@@ -352,7 +484,8 @@ const upsertSubscription = async (userId, planId, stripeSub, eventCreated) => {
   try {
     await prisma.subscription.create({ data })
     auditLog('SUBSCRIPTION_CREATED', {
-      userId,
+      userId: owner.userId,
+      organizationId: owner.organizationId,
       metadata: { stripeSubscriptionId: stripeSub.id, status: data.status },
     })
   } catch (err) {
