@@ -159,6 +159,7 @@
     "challengeTokenRequired": "Challenge token is required",
     "planIdRequired": "Plan ID is required",
     "validUrl": "Must be a valid URL",
+    "urlOriginNotAllowed": "URL must match the app's origin",
     "keyMinLength": "Key must be at least 2 characters",
     "keyFormat": "Key must be lowercase alphanumeric with hyphens, dots, colons, or underscores",
     "flagKeyRequired": "Flag key is required",

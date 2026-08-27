@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # npm dependencies — weekly. Security-fix PRs are opened by GitHub's
+  # Dependabot alerts feature independently of this schedule; this config
+  # governs routine version-update PRs.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+
+  # GitHub Actions used in the workflows themselves (actions/checkout, etc.).
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'

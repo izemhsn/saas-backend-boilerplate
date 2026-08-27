@@ -40,7 +40,13 @@ if (process.env.TRUST_PROXY) {
 }
 
 app.use(helmet()) // Secure HTTP headers
-app.use(compression({ threshold: 0 })) // Gzip compression for all responses
+// L4: compression's default threshold is 1KB; this was explicitly forced to
+// 0, compressing every response including small authenticated JSON bodies —
+// pointless below the MTU, and BREACH-adjacent (compression ratio can leak
+// information about secret data reflected into a response alongside
+// attacker-influenced input). Omitting `threshold` restores the library
+// default.
+app.use(compression())
 
 // CORS — never default to wildcard in production.
 // CORS_ORIGIN may be a single origin or a comma-separated list (e.g.
