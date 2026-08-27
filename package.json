@@ -69,7 +69,7 @@
   "homepage": "https://github.com/izemhsn/saas-backend-boilerplate#readme",
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^7.9.1",
     "@sentry/node": "^10.67.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.80.9",
