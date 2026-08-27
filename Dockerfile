@@ -44,4 +44,12 @@ USER node
 
 EXPOSE 3000
 
+# L2: liveness probe for orchestrators that don't define their own (Docker
+# Swarm, plain `docker run`, local compose). Kubernetes ignores this in favor
+# of its own livenessProbe/readinessProbe config, so it's additive, not a
+# replacement. Uses busybox's wget (ships with node:alpine) rather than curl,
+# which isn't installed here.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
 CMD ["node", "--import", "./src/instrument.js", "src/server.js"]

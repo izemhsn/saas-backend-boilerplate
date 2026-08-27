@@ -113,12 +113,20 @@ describe('POST /api/auth/login', () => {
       expect(res.status).toBe(401)
     }
 
-    // 6th attempt — even with correct password — should be locked (423)
+    // 6th attempt — even with the correct password — is rejected. M3: this
+    // used to be a distinct 423 "locked" response, which was an
+    // account-existence oracle (and, combined with the immediate short-circuit
+    // before any bcrypt compare, a timing oracle too). It now falls through
+    // to the same generic 401 as a plain wrong password, while the account
+    // stays genuinely locked underneath (verified via failedLoginAttempts).
     const lockedRes = await request(app)
       .post('/api/auth/login')
       .send({ email, password: VALID_PASSWORD })
-    expect(lockedRes.status).toBe(423)
-    expect(lockedRes.body.message).toMatch(/locked/i)
+    expect(lockedRes.status).toBe(401)
+
+    const user = await prisma.user.findFirst({ where: { email } })
+    expect(user.lockedUntil).not.toBeNull()
+    expect(user.lockedUntil.getTime()).toBeGreaterThan(Date.now())
   }, 15000)
 })
 

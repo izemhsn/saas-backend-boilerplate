@@ -270,8 +270,10 @@ describe('POST /api/auth/google', () => {
       password: VALID_PASSWORD,
     })
 
-    expect(res.status).toBe(400)
-    expect(res.body.message).toMatch(/Google/)
+    // M3: this used to be a distinct 400 "created with Google" response, which
+    // was an account-existence oracle. It now falls through to the same
+    // generic 401 as any other wrong-credentials login.
+    expect(res.status).toBe(401)
   })
 
   // H1 — Google only guarantees the `email` claim when `email_verified` is
