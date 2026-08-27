@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { validate } from '../../middleware/validate.middleware.js'
-import { authenticate } from '../../middleware/auth.middleware.js'
+import { authenticate, requireVerifiedEmail } from '../../middleware/auth.middleware.js'
 import {
   acceptInvitationSchema,
   declineInvitationSchema,
@@ -14,7 +14,18 @@ const router = Router()
 router.use(authenticate)
 
 // User-scoped invitation endpoints
-router.get('/me', validate(listMyInvitationsSchema), invitationCtrl.listMyInvitations)
+// M14: listMyInvitations matches on inviteeEmail alone, with no proof the
+// requester actually owns that mailbox. Before the invitee has verified their
+// email, an attacker who merely registers that address first could otherwise
+// learn the org name, slug, role, and inviter identity for a pending invite
+// that isn't theirs yet. requireVerifiedEmail closes that — accept/decline
+// don't need it, since both require the emailed token, not just the session.
+router.get(
+  '/me',
+  requireVerifiedEmail,
+  validate(listMyInvitationsSchema),
+  invitationCtrl.listMyInvitations,
+)
 router.post('/accept', validate(acceptInvitationSchema), invitationCtrl.acceptInvitation)
 router.post('/decline', validate(declineInvitationSchema), invitationCtrl.declineInvitation)
 

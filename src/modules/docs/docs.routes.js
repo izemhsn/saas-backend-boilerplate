@@ -99,7 +99,6 @@ const ERROR_MESSAGES = {
   404: 'Resource not found',
   409: 'Conflict — resource already exists',
   410: 'Gone — token expired',
-  423: 'Account locked due to too many failed attempts',
   502: 'Upstream (Stripe) request failed',
   503: 'Service unavailable',
 }
@@ -168,7 +167,7 @@ export const operations = [
     request: loginSchema,
     responses: {
       ...ok(s.loginData, 'Tokens or 2FA challenge'),
-      ...errors(400, 401, 423),
+      ...errors(400, 401),
     },
   },
   {
@@ -490,11 +489,13 @@ export const operations = [
     path: '/api/invitations/me',
     tag: 'Invitations',
     summary: 'List my pending invitations',
+    description:
+      'Requires a verified email — the invitations matched are proof the invitee owns that inbox.',
     security: 'bearer',
     request: listMyInvitationsSchema,
     responses: {
       ...ok(z.object({ invitations: z.array(s.invitation), pagination: s.pagination })),
-      ...errors(401),
+      ...errors(401, 403),
     },
   },
   {

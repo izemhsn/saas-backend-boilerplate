@@ -15,6 +15,37 @@ on:
   workflow_call:
 
 jobs:
+  audit:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # L9: advisory only for now, not gating — `npm audit --audit-level=high`
+      # currently fails on this repo (high-severity advisories transitively
+      # pulled in by Prisma 7's own CLI tooling — @prisma/config/@prisma/dev
+      # → deepmerge-ts/fast-uri/js-yaml/nanoid — none fixable without a
+      # forced, potentially breaking bump). Making this blocking today would
+      # redden every PR and, since verify.yml also gates deploy.yml, block
+      # deploys entirely. `continue-on-error` keeps the scan visible in every
+      # run (surfaces newly introduced vulnerabilities immediately) without
+      # holding the pipeline hostage to an upstream fix outside this repo's
+      # control. Dependabot (.github/dependabot.yml) is the actual
+      # remediation path; flip this to blocking once `npm audit
+      # --audit-level=high` is clean.
+      - name: Run npm audit (high severity)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
   lint:
     name: Lint & format check
     runs-on: ubuntu-latest

@@ -170,10 +170,7 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
     },
   })
 
-  // Check if account is locked (before password verification)
-  if (user?.lockedUntil && user.lockedUntil > new Date()) {
-    throw httpError('errors.accountLocked', 423)
-  }
+  const isLocked = Boolean(user?.lockedUntil && user.lockedUntil > new Date())
 
   // Reset lock if it has expired
   if (user?.lockedUntil && user.lockedUntil <= new Date()) {
@@ -185,20 +182,23 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
     user.lockedUntil = null
   }
 
-  // If the user has no password (OAuth-only account), reject with a helpful message
-  if (user && !user.password) {
-    await dummyCompare()
-    throw httpError('errors.accountCreatedWithGoogle', 400)
-  }
-
-  // Always run a bcrypt compare (dummy hash if the user is missing) so response
-  // timing doesn't reveal whether the email exists.
-  const valid = user
+  // M3: a missing user, a locked account, and an OAuth-only account (no
+  // password) all fall through to the same generic 401 below, with the same
+  // dummy-hash compare for timing. Locked/OAuth-only used to short-circuit
+  // with a distinct status code (423 / 400) before ever touching bcrypt,
+  // which was a status-code and timing oracle for account existence that
+  // defeated the dummyCompare equalisation used for the plain wrong-password
+  // case.
+  const canCompare = Boolean(user && user.password && !isLocked)
+  const valid = canCompare
     ? await comparePassword(password, user.password)
     : (await dummyCompare(), false)
 
   if (!valid) {
-    if (user) {
+    // Don't compound the lockout, and don't count attempts against a
+    // password that could never be correct (OAuth-only), while an account
+    // is already locked skip re-locking it further out.
+    if (user && !isLocked) {
       // Atomic increment — avoids the read-modify-write race where concurrent
       // failed logins could read the same count and both write the same value,
       // allowing more than MAX_FAILED_ATTEMPTS before locking.
