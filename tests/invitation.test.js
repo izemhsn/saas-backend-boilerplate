@@ -332,6 +332,12 @@ describe('GET /api/invitations/me', () => {
     const { res: inviteeRes } = await registerUser('invitee-melist')
     const { token: inviteeToken } = inviteeRes.body.data
     const inviteeEmail = inviteeRes.body.data.user.email
+    // M14: /me requires a verified email — it's the proof the requester owns
+    // the mailbox the invitation was sent to.
+    await prisma.user.update({
+      where: { id: inviteeRes.body.data.user.id },
+      data: { emailVerified: true },
+    })
 
     const rawToken = 'test-melist-token-' + RUN_ID
     const invitation = await prisma.organizationInvitation.create({
@@ -358,5 +364,20 @@ describe('GET /api/invitations/me', () => {
     const found = res.body.data.invitations.find((i) => i.id === invitation.id)
     expect(found).toBeTruthy()
     expect(found.status).toBe('PENDING')
+  })
+
+  // M14: before this was wired up, an attacker who registered the invitee's
+  // email address first — without proving they own it — could still list a
+  // pending invitation and learn the org name, slug, role, and inviter.
+  it('rejects an unverified email with 403', async () => {
+    const { res: unverifiedRes } = await registerUser('unverified-melist')
+    const { token: unverifiedToken } = unverifiedRes.body.data
+
+    const res = await request(app)
+      .get('/api/invitations/me')
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+
+    expect(res.status).toBe(403)
+    expect(res.body.success).toBe(false)
   })
 })

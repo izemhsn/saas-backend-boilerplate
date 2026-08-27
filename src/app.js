@@ -259,8 +259,21 @@ app.use('/api/notifications', notificationRouter)
 app.use('/api/feature-flags', authLimiter)
 app.use('/api/feature-flags', featureFlagRouter)
 
-// API documentation — OpenAPI 3.0 spec + Swagger UI (not rate-limited so
-// external tools can fetch the spec without being throttled).
+// API documentation — OpenAPI 3.0 spec + Swagger UI. M17: this route was
+// excluded from rate limiting entirely. buildSpec() itself is already
+// memoised (openapi.builder.js), so the CPU-burn half of the original
+// finding no longer applies — this limiter just bounds plain request volume,
+// generously, since legitimate tooling (Swagger UI itself, codegen) polls it.
+const docsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skip: skipInTest,
+  passOnStoreError: true,
+  store: createRedisStore('rl:docs:'),
+})
+app.use('/api/docs', docsLimiter)
 app.use('/api/docs', docsRouter)
 
 app.use((req, res) =>

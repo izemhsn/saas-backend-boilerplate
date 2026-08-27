@@ -14,7 +14,11 @@ const router = Router()
 
 const isTest = process.env.NODE_ENV === 'test'
 
-// OpenAPI JSON spec — always available (even in test, for verification).
+// buildSpec() is already memoised internally (openapi.builder.js's
+// `cachedSpec`, invalidated via `resetSpecCache()` for tests that flip
+// APP_URL) — M17's "rebuilds the spec on every request" half was already
+// fixed there. The other half, this route having no rate limiter at all, is
+// fixed in app.js (docsLimiter).
 router.get('/', (req, res) => {
   res.setHeader('Content-Type', 'application/json')
   res.json(buildSpec())
