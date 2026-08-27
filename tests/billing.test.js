@@ -216,6 +216,28 @@ describe('POST /api/billing/checkout', () => {
 
     expect(res.status).toBe(401)
   })
+
+  // L5: successUrl/cancelUrl are forwarded verbatim to Stripe as
+  // success_url/cancel_url, which Stripe uses to redirect the user's browser
+  // once checkout completes — a well-formed URL on a different origin would
+  // otherwise be a Stripe-hosted open redirect.
+  it('rejects a well-formed URL on a different origin (open-redirect guard)', async () => {
+    const { res: registerRes } = await registerUser('offsite-url')
+    const { token } = registerRes.body.data
+
+    const plan = await prisma.plan.findFirst({ where: { name: 'Free' } })
+    const res = await request(app)
+      .post('/api/billing/checkout')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        planId: plan.id,
+        successUrl: 'https://evil.example.com/success',
+        cancelUrl: 'http://localhost:3000/cancel',
+      })
+
+    expect(res.status).toBe(400)
+    expect(res.body.errors).toBeDefined()
+  })
 })
 
 describe('POST /api/billing/portal', () => {
@@ -230,6 +252,20 @@ describe('POST /api/billing/portal', () => {
 
     expect(res.status).toBe(400)
     expect(res.body.message).toMatch(/no billing account/i)
+  })
+
+  // L5: same open-redirect guard as checkout, applied to return_url.
+  it('rejects a well-formed URL on a different origin (open-redirect guard)', async () => {
+    const { res: registerRes } = await registerUser('offsite-return-url')
+    const { token } = registerRes.body.data
+
+    const res = await request(app)
+      .post('/api/billing/portal')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ returnUrl: 'https://evil.example.com/dashboard' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.errors).toBeDefined()
   })
 })
 
