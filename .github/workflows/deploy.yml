@@ -63,7 +63,7 @@ jobs:
       # Derive image tags + labels from the git ref (branch or tag).
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
