@@ -159,6 +159,7 @@
     "challengeTokenRequired": "Le jeton de défi est requis",
     "planIdRequired": "L'ID du plan est requis",
     "validUrl": "Doit être une URL valide",
+    "urlOriginNotAllowed": "L'URL doit correspondre à l'origine de l'application",
     "keyMinLength": "La clé doit comporter au moins 2 caractères",
     "keyFormat": "La clé doit être alphanumérique minuscule avec des tirets, points, deux-points ou traits de soulignement",
     "flagKeyRequired": "La clé de flag est requise",
