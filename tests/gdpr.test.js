@@ -360,5 +360,41 @@ describe('DELETE /api/auth/account', () => {
       expect(res.status).toBe(200)
       createdUserIds.splice(createdUserIds.indexOf(userId), 1)
     })
+
+    // Soft-deleting the org used to be a way straight around the guard
+    // above: the block query filtered on `deletedAt: null`, but the
+    // Organization.owner cascade does not, so the org and every membership
+    // on it were destroyed anyway — turning a restorable soft delete into
+    // permanent loss of another member's data.
+    it('still blocks deletion when the shared org has been soft-deleted', async () => {
+      const { token, userId } = await registerUser('softdel-owner')
+      const { userId: memberUserId } = await registerUser('softdel-member')
+
+      const org = await createOrg(userId, `softdel-guard-${RUN_ID}`)
+      await prisma.organizationMember.create({
+        data: { organizationId: org.id, userId: memberUserId, role: 'MEMBER' },
+      })
+
+      const deleteOrgRes = await request(app)
+        .delete(`/api/organizations/${org.id}`)
+        .set('Authorization', `Bearer ${token}`)
+      expect(deleteOrgRes.status).toBe(200)
+
+      const res = await request(app)
+        .delete('/api/auth/account')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ password: VALID_PASSWORD })
+
+      expect(res.status).toBe(409)
+
+      // The org and the other member's membership must both survive.
+      const dbOrg = await prisma.organization.findUnique({ where: { id: org.id } })
+      expect(dbOrg).not.toBeNull()
+      expect(dbOrg.deletedAt).not.toBeNull()
+      const memberships = await prisma.organizationMember.count({
+        where: { organizationId: org.id },
+      })
+      expect(memberships).toBe(2)
+    })
   })
 })

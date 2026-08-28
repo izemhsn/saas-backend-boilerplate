@@ -3,12 +3,7 @@ import { stripe, isStripeConfigured } from '../../config/stripe.js'
 import { httpError } from '../../utils/httpError.js'
 import { comparePassword } from '../../utils/hash.js'
 import logger from '../../utils/logger.js'
-
-// Subscription statuses that still represent a live Stripe billing
-// relationship and must be cancelled before the local rows are cascade-
-// deleted — otherwise Stripe keeps charging a customer this API no longer
-// has any record of.
-const LIVE_SUBSCRIPTION_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE']
+import { LIVE_SUBSCRIPTION_STATUSES } from '../billing/billing.service.js'
 
 // ── Data Export ─────────────────────────────────────────────────────
 
@@ -198,8 +193,16 @@ export const deleteAccount = async (userId, password) => {
   // OrganizationFeatureFlag) — taking other people's data with it. An
   // org the user owns alone is safe to let cascade; one with other members
   // must be handed off first via POST /:orgId/transfer-ownership.
+  //
+  // Soft-deleted orgs are deliberately included. Scoping this to
+  // `deletedAt: null` made org soft-deletion a way straight around the
+  // guard: an owner could soft-delete a shared org, then delete their
+  // account, and the org would cascade away with every membership on it —
+  // turning a reversible soft delete (POST /:orgId/restore exists precisely
+  // so it can be undone) into permanent destruction of other members' data.
+  // The cascade does not care about deletedAt, so neither can this check.
   const ownedOrgs = await prisma.organization.findMany({
-    where: { ownerId: userId, deletedAt: null },
+    where: { ownerId: userId },
     select: { id: true, name: true, slug: true, _count: { select: { members: true } } },
   })
   const blockingOrgs = ownedOrgs.filter((org) => org._count.members > 1)
@@ -215,9 +218,23 @@ export const deleteAccount = async (userId, password) => {
   // deleted user should not keep being billed, and this is the GDPR erasure
   // endpoint specifically. Fail the whole request if Stripe cancellation
   // fails, rather than delete the account while still leaving it billed.
+  //
+  // This must cover org-owned subscriptions as well as personal ones (M12
+  // added Subscription.organizationId). Organization.owner is
+  // onDelete: Cascade and Subscription.organization is too, so deleting this
+  // user destroys every organization they own *and* those organizations'
+  // subscription rows. The guard above only blocks orgs with other members,
+  // so a solo-owned org holding an active org subscription reaches here — and
+  // scoping this query to `userId` alone would leave exactly that
+  // subscription billing forever. No `deletedAt` filter on the organization:
+  // soft-deleted orgs cascade on user delete too, so anything that will be
+  // destroyed must be cancelled.
   if (isStripeConfigured()) {
     const liveSubscriptions = await prisma.subscription.findMany({
-      where: { userId, status: { in: LIVE_SUBSCRIPTION_STATUSES } },
+      where: {
+        status: { in: LIVE_SUBSCRIPTION_STATUSES },
+        OR: [{ userId }, { organization: { ownerId: userId } }],
+      },
       select: { id: true, stripeSubscriptionId: true },
     })
     for (const sub of liveSubscriptions) {

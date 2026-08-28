@@ -598,7 +598,7 @@ export const getGoogleAuthUrl = () => {
 export const googleLogin = async ({ code, state }, { userAgent, ipAddress } = {}) => {
   if (!isGoogleConfigured()) throw httpError('errors.googleNotConfigured', 503)
 
-  // OAuth login-CSRF defense (H4 in AUDIT.md): without this, an attacker who
+  // OAuth login-CSRF defense: without this, an attacker who
   // starts their own OAuth flow and captures a valid `code` for their own
   // Google account can trick a victim's browser into completing this
   // exchange, signing the victim into (or linking their account onto) the

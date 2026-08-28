@@ -9,12 +9,14 @@ import {
   cleanupNotifications,
   cleanupTerminalInvitations,
   cleanupFailedJobs,
+  cleanupProcessedWebhookEvents,
 } from '../src/modules/jobs/maintenance.worker.js'
 
 // M6: the maintenance worker previously only pruned RefreshToken — these
-// tests pin the five new cleanup jobs (2FA challenges, audit logs,
-// notifications, terminal invitations, dead-lettered jobs) directly, without
-// going through BullMQ, since the job functions are exported for exactly this.
+// tests pin the six added cleanup jobs (2FA challenges, audit logs,
+// notifications, terminal invitations, dead-lettered jobs, and the Stripe
+// webhook idempotency ledger) directly, without going through BullMQ, since
+// the job functions are exported for exactly this.
 const RUN_ID = Date.now()
 const emailFor = (label) => `maint-${label}-${RUN_ID}@example.com`
 const VALID_PASSWORD = 'Password123'
@@ -24,6 +26,7 @@ const createdEmails = []
 const createdUserIds = []
 const createdOrgIds = []
 const createdFailedJobIds = []
+const createdWebhookEventIds = []
 
 const registerUser = async (label) => {
   const email = emailFor(label)
@@ -49,6 +52,11 @@ afterAll(async () => {
   }
   if (createdFailedJobIds.length) {
     await prisma.failedJob.deleteMany({ where: { id: { in: createdFailedJobIds } } })
+  }
+  if (createdWebhookEventIds.length) {
+    await prisma.processedWebhookEvent.deleteMany({
+      where: { id: { in: createdWebhookEventIds } },
+    })
   }
   await prisma.twoFactorChallenge.deleteMany({ where: { userId: { in: createdUserIds } } })
   await prisma.auditLog.deleteMany({ where: { userId: { in: createdUserIds } } })
@@ -240,6 +248,35 @@ describe('maintenance worker — data retention cleanup jobs', () => {
     await cleanupFailedJobs()
 
     const remaining = await prisma.failedJob.findMany({
+      where: { id: { in: [old.id, recent.id] } },
+      select: { id: true },
+    })
+    expect(remaining.map((r) => r.id)).toEqual([recent.id])
+  })
+
+  // The Stripe webhook idempotency ledger. Insert-only and never read back
+  // beyond handleWebhook's insert-or-skip check, so it outgrew every other
+  // table here — it was missed when the cleanup jobs above were first added.
+  it('cleanupProcessedWebhookEvents removes only rows past the retention window', async () => {
+    const old = await prisma.processedWebhookEvent.create({
+      data: {
+        id: `evt_old_${RUN_ID}`,
+        type: 'customer.subscription.updated',
+        createdAt: daysAgo(60),
+      },
+    })
+    const recent = await prisma.processedWebhookEvent.create({
+      data: {
+        id: `evt_recent_${RUN_ID}`,
+        type: 'customer.subscription.updated',
+        createdAt: daysAgo(1),
+      },
+    })
+    createdWebhookEventIds.push(old.id, recent.id)
+
+    await cleanupProcessedWebhookEvents()
+
+    const remaining = await prisma.processedWebhookEvent.findMany({
       where: { id: { in: [old.id, recent.id] } },
       select: { id: true },
     })

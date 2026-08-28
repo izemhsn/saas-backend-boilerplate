@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
 
 // Stateless, self-verifying `state` token for the Google OAuth login-CSRF
-// defense (H4 in AUDIT.md). `GET /api/auth/google` issues one and embeds it
+// defense. `GET /api/auth/google` issues one and embeds it
 // in the authorization URL; `POST /api/auth/google` requires the client to
 // echo it back and rejects the exchange if it's missing, tampered with, or
 // expired — before any call to Google.

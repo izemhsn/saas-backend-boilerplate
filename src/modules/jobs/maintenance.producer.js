@@ -34,6 +34,10 @@ const OTHER_CLEANUP_JOB_NAMES = [
   'cleanupNotifications',
   'cleanupTerminalInvitations',
   'cleanupFailedJobs',
+  // The Stripe webhook idempotency ledger — insert-only and never read back,
+  // so it outgrows every other table here on a busy account. It was missed
+  // when the jobs above were added.
+  'cleanupProcessedWebhookEvents',
 ]
 
 export const scheduleDataRetentionCleanup = async () => {
