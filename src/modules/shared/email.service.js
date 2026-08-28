@@ -17,6 +17,18 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
+// Inverse of escapeHtml, for the plain-text part: `strings` below is shared
+// between the HTML and text templates and already carries HTML-escaped
+// params (e.g. a name), which would otherwise show up as literal "&amp;" etc.
+// in a text-only mail client.
+const unescapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+
 // Build the HTML email body from locale-specific template strings.
 // All text is pulled from the i18n locale files so emails are sent in the
 // user's preferred language.
@@ -37,6 +49,22 @@ const buildEmailHtml = (strings, { url, button }) => `
     </div>
   `
 
+// Plain-text alternative for the same message. Mail clients without HTML
+// rendering fall back to this, and having one improves deliverability —
+// an HTML-only message with no text part is a common spam-filter signal.
+const buildEmailText = (strings, { url, button }) =>
+  [
+    strings.heading,
+    strings.greeting ? `${strings.greeting},` : null,
+    strings.body,
+    `${button}: ${url}`,
+    strings.copyLink,
+    strings.footer,
+  ]
+    .filter((line) => line != null && line !== '')
+    .map(unescapeHtml)
+    .join('\n\n')
+
 export const sendVerificationEmail = async ({ to, token, name, locale = DEFAULT_LOCALE }) => {
   const verifyUrl = `${APP_URL}/verify-email?token=${token}`
   const strings = {
@@ -52,6 +80,7 @@ export const sendVerificationEmail = async ({ to, token, name, locale = DEFAULT_
   const subject = translate('emails.verification.subject', locale)
 
   const html = buildEmailHtml(strings, { url: verifyUrl, button })
+  const text = buildEmailText(strings, { url: verifyUrl, button })
 
   if (!resend) {
     logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
@@ -63,6 +92,7 @@ export const sendVerificationEmail = async ({ to, token, name, locale = DEFAULT_
     to,
     subject,
     html,
+    text,
   })
 
   if (error)
@@ -86,6 +116,7 @@ export const sendPasswordResetEmail = async ({ to, token, name, locale = DEFAULT
   const subject = translate('emails.passwordReset.subject', locale)
 
   const html = buildEmailHtml(strings, { url: resetUrl, button })
+  const text = buildEmailText(strings, { url: resetUrl, button })
 
   if (!resend) {
     logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
@@ -97,6 +128,7 @@ export const sendPasswordResetEmail = async ({ to, token, name, locale = DEFAULT
     to,
     subject,
     html,
+    text,
   })
 
   if (error)
@@ -129,6 +161,7 @@ export const sendOrgInvitationEmail = async ({
   const subject = translate('emails.orgInvitation.subject', locale, { orgName })
 
   const html = buildEmailHtml(strings, { url: inviteUrl, button })
+  const text = buildEmailText(strings, { url: inviteUrl, button })
 
   if (!resend) {
     logger.warn('[email] RESEND_API_KEY not set — skipping email send (dev mode)')
@@ -140,6 +173,7 @@ export const sendOrgInvitationEmail = async ({
     to,
     subject,
     html,
+    text,
   })
 
   if (error)

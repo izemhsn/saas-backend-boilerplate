@@ -3,7 +3,6 @@
     "userNotFound": "Utilisateur introuvable",
     "deletedUserNotFound": "Utilisateur supprimé introuvable",
     "emailAlreadyRegistered": "E-mail déjà enregistré",
-    "accountCreatedWithGoogle": "Ce compte a été créé avec Google. Veuillez utiliser la connexion Google.",
     "invalidCredentials": "Identifiants invalides",
     "accountBanned": "Votre compte a été banni",
     "accountSuspended": "Votre compte est suspendu jusqu'au {until}",
@@ -11,7 +10,6 @@
     "invalidRefreshToken": "Jeton de rafraîchissement invalide",
     "invalidOrExpiredVerificationToken": "Jeton de vérification invalide ou expiré",
     "verificationTokenExpired": "Le jeton de vérification a expiré. Veuillez en demander un nouveau.",
-    "emailAlreadyVerified": "E-mail déjà vérifié",
     "invalidOrExpiredResetToken": "Jeton de réinitialisation invalide ou expiré",
     "accountNoPassword": "Ce compte n'a pas de mot de passe défini. Veuillez utiliser la connexion Google.",
     "currentPasswordIncorrect": "Le mot de passe actuel est incorrect",
@@ -97,12 +95,12 @@
     "failedToSendVerificationEmail": "Échec de l'envoi de l'e-mail de vérification : {message}",
     "failedToSendPasswordResetEmail": "Échec de l'envoi de l'e-mail de réinitialisation : {message}",
     "failedToSendOrgInvitationEmail": "Échec de l'envoi de l'e-mail d'invitation : {message}",
-    "accountLocked": "Compte temporairement verrouillé en raison de trop nombreuses tentatives échouées. Réessayez plus tard.",
     "emailAlreadyInUseChangeEmail": "Cette adresse e-mail est déjà utilisée. Veuillez demander un nouveau changement d'e-mail.",
     "noPasswordSet": "Ce compte n'a pas de mot de passe défini. Veuillez définir un mot de passe avant de supprimer votre compte.",
     "resourceConflict": "Une ressource avec cette valeur existe déjà",
     "resourceNotFound": "Ressource introuvable",
-    "projectNotFound": "Projet introuvable"
+    "projectNotFound": "Projet introuvable",
+    "badRequest": "La demande n'a pas pu être traitée"
   },
   "messages": {
     "emailAlreadyVerified": "E-mail déjà vérifié",

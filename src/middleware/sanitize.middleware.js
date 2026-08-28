@@ -35,7 +35,9 @@ export const sanitizeValue = (value, depth = 0) => {
 
 // Recursively sanitizes an object in-place: strips dangerous keys, $-prefixed keys,
 // and sanitizes string values. Returns the same object reference.
-const sanitizeInPlace = (obj, depth = 0) => {
+// Exported so validate.middleware.js can clean `req.params`, which does not
+// exist yet when this module's middleware runs — see sanitizeRequest below.
+export const sanitizeInPlace = (obj, depth = 0) => {
   if (depth > 10 || obj === null || typeof obj !== 'object') return obj
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
@@ -55,17 +57,33 @@ const sanitizeInPlace = (obj, depth = 0) => {
   return obj
 }
 
-// Sanitizes req.body, req.query, and req.params in-place.
+// Sanitizes req.body and req.query.
 // Must run after express.json() (so req.body is populated) and before validate().
+//
+// `req.params` is deliberately NOT handled here: this is app-level middleware,
+// and Express only populates params when the router later dispatches to a
+// matched route — at this point it is always `{}`. Param sanitization lives in
+// validate.middleware.js instead, which runs per-route once params exist.
 export const sanitizeRequest = (req, _res, next) => {
   if (req.body && typeof req.body === 'object') {
     sanitizeInPlace(req.body)
   }
-  if (req.query && typeof req.query === 'object') {
-    sanitizeInPlace(req.query)
+
+  // Express 5 defines `query` as a getter on the request prototype that
+  // re-parses the query string on *every* access and returns a fresh object
+  // each time (see express/lib/request.js). Mutating what it returns is
+  // therefore discarded — the next reader re-parses the raw, unsanitized
+  // string. Shadow the getter with an own data property holding a sanitized
+  // copy, so validate() and every controller downstream see the clean values.
+  const rawQuery = req.query
+  if (rawQuery && typeof rawQuery === 'object') {
+    Object.defineProperty(req, 'query', {
+      value: sanitizeValue(rawQuery),
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    })
   }
-  if (req.params && typeof req.params === 'object') {
-    sanitizeInPlace(req.params)
-  }
+
   next()
 }

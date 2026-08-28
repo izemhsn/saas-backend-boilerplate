@@ -52,8 +52,8 @@ export const loginData = z.object({
 
 export const googleAuthUrlData = z.object({
   url: z.string().url(),
-  // Must be echoed back verbatim in the POST /api/auth/google body — see H4
-  // in AUDIT.md.
+  // Must be echoed back verbatim in the POST /api/auth/google body — it is
+  // the OAuth login-CSRF defense, verified before any call to Google.
   state: z.string(),
 })
 

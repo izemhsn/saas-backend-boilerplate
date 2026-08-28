@@ -134,6 +134,18 @@ Never edit an existing migration — always create a new one. Prisma migrations 
 4. Write tests in `tests/<name>.test.js`.
 5. Add the module's endpoints to the README API table.
 
+## Releases
+
+This project follows [Semantic Versioning](https://semver.org/).
+
+- To cut a release: bump `version` in `package.json`, commit, then tag:
+  `git tag vx.y.z && git push origin vx.y.z`. `deploy.yml` runs on pushes to `main` as
+  well as on `v*` tags.
+- Version bump: **major** for a breaking API/schema change, **minor** for a
+  backward-compatible feature, **patch** for a fix with no interface change.
+- Release notes are generated from the commit history; conventional commit messages
+  (see above) are what make that readable, so write them with the changelog in mind.
+
 ## Reporting bugs
 
 Open a [GitHub Issue](https://github.com/izemhsn/saas-backend-boilerplate/issues) using the Bug Report template. Include:

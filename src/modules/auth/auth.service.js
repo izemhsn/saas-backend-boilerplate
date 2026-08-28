@@ -12,6 +12,7 @@ import {
 } from '../../config/google.js'
 import { createChallenge } from './twofa.service.js'
 import { createOAuthState, verifyOAuthState } from '../../utils/oauthState.js'
+import { log as auditLog } from '../audit/audit.service.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -214,6 +215,15 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
         })
       }
     }
+    // Fire-and-forget — logged even for an unknown email (userId: null) so
+    // the audit trail can surface credential-stuffing attempts, not just
+    // failures against real accounts.
+    auditLog('USER_LOGIN_FAILED', {
+      userId: user?.id ?? null,
+      ipAddress,
+      userAgent,
+      metadata: { email: normalizeEmail(email) },
+    })
     throw httpError('errors.invalidCredentials', 401)
   }
 
@@ -588,7 +598,7 @@ export const getGoogleAuthUrl = () => {
 export const googleLogin = async ({ code, state }, { userAgent, ipAddress } = {}) => {
   if (!isGoogleConfigured()) throw httpError('errors.googleNotConfigured', 503)
 
-  // OAuth login-CSRF defense (H4 in AUDIT.md): without this, an attacker who
+  // OAuth login-CSRF defense: without this, an attacker who
   // starts their own OAuth flow and captures a valid `code` for their own
   // Google account can trick a victim's browser into completing this
   // exchange, signing the victim into (or linking their account onto) the

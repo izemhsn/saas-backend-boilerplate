@@ -1,0 +1,20 @@
+# Normalize every text file to LF in the repository AND in the working tree.
+#
+# Without this, Git for Windows' default `core.autocrlf=true` checks the tree
+# out with CRLF endings, which Prettier (endOfLine: "lf", its default) then
+# reports as a formatting error in every file — so `npm run format:check`,
+# a CI gate, fails on a clean clone for every Windows contributor and buries
+# real formatting problems in the noise. `eol=lf` pins the working-tree
+# ending regardless of each developer's autocrlf setting.
+* text=auto eol=lf
+
+# Binary files Git must never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Generated — keep it out of diffs and language stats.
+package-lock.json -diff linguist-generated=true

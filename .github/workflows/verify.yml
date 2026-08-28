@@ -30,19 +30,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # L9: advisory only for now, not gating — `npm audit --audit-level=high`
-      # currently fails on this repo (high-severity advisories transitively
-      # pulled in by Prisma 7's own CLI tooling — @prisma/config/@prisma/dev
-      # → deepmerge-ts/fast-uri/js-yaml/nanoid — none fixable without a
-      # forced, potentially breaking bump). Making this blocking today would
-      # redden every PR and, since verify.yml also gates deploy.yml, block
-      # deploys entirely. `continue-on-error` keeps the scan visible in every
-      # run (surfaces newly introduced vulnerabilities immediately) without
-      # holding the pipeline hostage to an upstream fix outside this repo's
-      # control. Dependabot (.github/dependabot.yml) is the actual
-      # remediation path; flip this to blocking once `npm audit
-      # --audit-level=high` is clean.
-      - name: Run npm audit (high severity)
+      # Blocking: the dependency set that actually reaches production. It
+      # mirrors the production image's install flags exactly (Dockerfile:
+      # `npm ci --omit=dev --omit=optional`), so a high-severity advisory in
+      # anything the running app can load fails the build — and, since this
+      # workflow gates deploy.yml, blocks the deploy.
+      #
+      # --omit=optional is not cosmetic here: `prisma` (the CLI) is an
+      # optional peer of `@prisma/client`, so the lockfile marks its whole
+      # subtree `devOptional` and --omit=dev alone would leave it — and its
+      # advisories — in scope even though the image no longer ships it.
+      - name: Run npm audit (shipped dependencies — blocking)
+        run: npm audit --omit=dev --omit=optional --audit-level=high
+
+      # Advisory: the full tree, including the build/test toolchain that never
+      # ships. Kept visible so a newly introduced dev-side vulnerability is
+      # surfaced on every run, but non-blocking — these are outside the
+      # running app's attack surface, and holding deploys hostage to an
+      # upstream fix in tooling would be the wrong trade. Dependabot
+      # (.github/dependabot.yml) is the remediation path.
+      - name: Run npm audit (full tree — advisory)
         run: npm audit --audit-level=high
         continue-on-error: true
 
