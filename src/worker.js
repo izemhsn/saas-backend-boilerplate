@@ -2,8 +2,13 @@ import './instrument.js'
 import 'dotenv/config'
 import { startEmailWorker, stopEmailWorker } from './modules/jobs/email.worker.js'
 import { startMaintenanceWorker, stopMaintenanceWorker } from './modules/jobs/maintenance.worker.js'
-import { scheduleRefreshTokenCleanup } from './modules/jobs/maintenance.producer.js'
+import {
+  scheduleRefreshTokenCleanup,
+  scheduleDataRetentionCleanup,
+} from './modules/jobs/maintenance.producer.js'
 import { closeRedisConnection } from './config/redis.js'
+import { prisma } from './config/db.js'
+import { getSentry } from './config/sentry.js'
 import logger from './utils/logger.js'
 
 const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'REDIS_URL']
@@ -18,18 +23,45 @@ startMaintenanceWorker()
 scheduleRefreshTokenCleanup().catch((err) =>
   logger.error({ err }, 'Failed to schedule refresh token cleanup'),
 )
+scheduleDataRetentionCleanup().catch((err) =>
+  logger.error({ err }, 'Failed to schedule data retention cleanup'),
+)
 
 let shuttingDown = false
 const shutdown = async (signal) => {
   if (shuttingDown) return
   shuttingDown = true
   logger.info(`${signal} received — shutting down worker`)
+  // Force-exit if a hung job or a stuck connection blocks graceful shutdown —
+  // mirrors server.js so the process can't be left hanging until SIGKILL.
+  const forceExit = setTimeout(() => {
+    logger.error('Forced worker shutdown after timeout')
+    process.exit(1)
+  }, 10_000).unref()
   // Close BullMQ workers first so in-flight jobs finish (or are re-queued)
   // before the Redis connection they depend on is torn down
   await Promise.allSettled([stopEmailWorker(), stopMaintenanceWorker()])
   await closeRedisConnection()
+  await prisma.$disconnect()
+  clearTimeout(forceExit)
   process.exit(0)
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
+
+// Catch unhandled errors so a hung job or a stray rejection doesn't kill the
+// worker silently with no Sentry report — mirrors server.js's handlers.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'Unhandled promise rejection in worker')
+  const sentry = getSentry()
+  if (sentry) sentry.captureException(reason)
+  shutdown('unhandledRejection')
+})
+
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'Uncaught exception in worker')
+  const sentry = getSentry()
+  if (sentry) sentry.captureException(err)
+  shutdown('uncaughtException')
+})

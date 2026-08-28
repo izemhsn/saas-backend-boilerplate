@@ -102,7 +102,8 @@
     "noPasswordSet": "This account has no password set. Please set a password before deleting your account.",
     "resourceConflict": "A resource with this value already exists",
     "resourceNotFound": "Resource not found",
-    "projectNotFound": "Project not found"
+    "projectNotFound": "Project not found",
+    "badRequest": "The request could not be processed"
   },
   "messages": {
     "emailAlreadyVerified": "Email already verified",
