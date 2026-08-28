@@ -6,6 +6,7 @@ import {
   sendPasswordResetEmail,
   sendOrgInvitationEmail,
 } from '../shared/email.service.js'
+import { handleJobFailure } from './deadLetter.js'
 
 const QUEUE_NAME = 'email'
 
@@ -48,6 +49,9 @@ export const startEmailWorker = () => {
 
   worker.on('failed', (job, err) => {
     logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, 'Email job failed')
+    handleJobFailure(QUEUE_NAME, job, err).catch((dlqErr) =>
+      logger.error({ err: dlqErr }, 'Dead-letter handling failed for email job'),
+    )
   })
 
   worker.on('error', (err) => {

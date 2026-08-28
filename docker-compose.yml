@@ -1,3 +1,28 @@
+# Default `docker compose up -d` starts only Postgres + Redis — the fast
+# local-dev loop, where the app itself runs on the host via `npm run dev`
+# (hot reload). The `app`/`worker`/`migrate` services below are opt-in via
+# a profile so that loop is unaffected:
+#
+#   docker compose --profile full up -d
+#
+# runs the whole stack in containers — Postgres, Redis, a one-shot migration,
+# the API, and the background worker — for a true zero-local-install quick
+# start (L3). It builds the same `production` image the real deploy pipeline
+# does, so it also doubles as a local smoke test of that image.
+#
+# The secrets below are placeholder values for this local-only profile — never
+# reuse them for a real deployment.
+x-app-env: &app-env
+  NODE_ENV: production
+  PORT: '3000'
+  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/saas-boilerplate_db
+  REDIS_URL: redis://redis:6379
+  APP_URL: http://localhost:3000
+  CORS_ORIGIN: http://localhost:3000
+  JWT_SECRET: docker-compose-local-only-jwt-secret-do-not-use-in-prod
+  JWT_REFRESH_SECRET: docker-compose-local-only-refresh-secret-do-not-use
+  SECRET_ENCRYPTION_KEY: docker-compose-local-only-encryption-key-32ch
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,6 +36,11 @@ services:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -20,6 +50,64 @@ services:
       - '6379:6379'
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: applies migrations, then exits. `target: build` (not
+  # `production`) because the production image omits devDependencies and
+  # `prisma` (the CLI, as opposed to `@prisma/client`) is one.
+  migrate:
+    profiles: ['full']
+    build:
+      context: .
+      target: build
+    environment:
+      <<: *app-env
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  app:
+    profiles: ['full']
+    build:
+      context: .
+      target: production
+    ports:
+      - '3000:3000'
+    environment:
+      <<: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: on-failure
+    # Reuses the HEALTHCHECK baked into the production image (Dockerfile).
+
+  worker:
+    profiles: ['full']
+    build:
+      context: .
+      target: production
+    command: ['node', '--import', './src/instrument.js', 'src/worker.js']
+    environment:
+      <<: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: on-failure
+    # The worker doesn't serve HTTP, so the production image's baked-in
+    # HEALTHCHECK (GET /health on :3000) would never pass here — disable it
+    # rather than inherit a check that can never succeed.
+    healthcheck:
+      disable: true
 
 volumes:
   pgdata:

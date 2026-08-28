@@ -80,6 +80,9 @@ model TwoFactorChallenge {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // M6: the maintenance worker's cleanupTwoFactorChallenges job deletes on
+  // this column daily; without an index that's a full table scan.
+  @@index([expiresAt])
   @@map("two_factor_challenges")
 }
 
@@ -248,6 +251,25 @@ model ProcessedWebhookEvent {
   createdAt DateTime @default(now())
 
   @@map("processed_webhook_events")
+}
+
+// M8: a BullMQ job that exhausts all its retry attempts is otherwise only
+// logged (email.worker.js / maintenance.worker.js's `failed` handlers) and
+// then dropped by `removeOnFail` — a verification or password-reset email
+// that never sends is lost with nothing to alert on or requeue from. This
+// table is the dead-letter record; see src/modules/jobs/deadLetter.js.
+model FailedJob {
+  id        String   @id @default(cuid())
+  queue     String
+  jobName   String
+  jobData   Json
+  error     String
+  attempts  Int
+  failedAt  DateTime @default(now())
+
+  @@index([queue])
+  @@index([failedAt])
+  @@map("failed_jobs")
 }
 
 enum PlanInterval {
@@ -420,6 +442,10 @@ model Notification {
   @@index([userId])
   @@index([userId, readAt])
   @@index([type])
+  // M6: cleanupNotifications deletes on this column alone (no userId in its
+  // where-clause), so it needs its own index rather than relying on the
+  // userId-prefixed ones above.
+  @@index([createdAt])
   @@map("notifications")
 }
 
