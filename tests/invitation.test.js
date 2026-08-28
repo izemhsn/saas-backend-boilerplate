@@ -49,6 +49,18 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
+// Fire-and-forget audit logs aren't awaited by the request — poll instead of
+// asserting immediately after the response comes back.
+const pollFor = async (query, { timeout = 2000, interval = 100 } = {}) => {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const result = await query()
+    if (result) return result
+    await new Promise((resolve) => setTimeout(resolve, interval))
+  }
+  return null
+}
+
 describe('POST /api/organizations/:orgId/invitations', () => {
   it('creates an invitation for a non-member', async () => {
     const { res: ownerRes } = await registerUser('owner-create')
@@ -221,6 +233,52 @@ describe('POST /api/invitations/accept', () => {
     })
     expect(membership).toBeTruthy()
     expect(membership.role).toBe('MEMBER')
+  })
+
+  it('logs MEMBER_ADDED alongside INVITATION_ACCEPTED on accept', async () => {
+    const { res: ownerRes } = await registerUser('owner-accept-audit')
+    const { token: ownerToken } = ownerRes.body.data
+    const orgRes = await createOrg(ownerToken, 'accept-audit')
+    const orgId = orgRes.body.data.organization.id
+
+    const { res: inviteeRes } = await registerUser('invitee-accept-audit')
+    const { token: inviteeToken } = inviteeRes.body.data
+    const inviteeId = inviteeRes.body.data.user.id
+    const inviteeEmail = inviteeRes.body.data.user.email
+
+    const rawToken = 'test-accept-audit-token-' + RUN_ID
+    const invitation = await prisma.organizationInvitation.create({
+      data: {
+        organizationId: orgId,
+        inviterId: ownerRes.body.data.user.id,
+        inviteeEmail,
+        inviteeId,
+        role: 'MEMBER',
+        status: 'PENDING',
+        token: createHash('sha256').update(rawToken).digest('hex'),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    })
+    createdInvitationIds.push(invitation.id)
+
+    const res = await request(app)
+      .post('/api/invitations/accept')
+      .set('Authorization', `Bearer ${inviteeToken}`)
+      .send({ token: rawToken })
+    expect(res.status).toBe(200)
+
+    const memberAddedLog = await pollFor(() =>
+      prisma.auditLog.findFirst({
+        where: { action: 'MEMBER_ADDED', organizationId: orgId, targetUserId: inviteeId },
+      }),
+    )
+    expect(memberAddedLog).not.toBeNull()
+    expect(memberAddedLog.userId).toBe(inviteeId)
+
+    const invitationAcceptedLog = await prisma.auditLog.findFirst({
+      where: { action: 'INVITATION_ACCEPTED', organizationId: orgId, userId: inviteeId },
+    })
+    expect(invitationAcceptedLog).not.toBeNull()
   })
 
   it('rejects accepting an invitation meant for another user', async () => {

@@ -12,6 +12,7 @@ import {
 } from '../../config/google.js'
 import { createChallenge } from './twofa.service.js'
 import { createOAuthState, verifyOAuthState } from '../../utils/oauthState.js'
+import { log as auditLog } from '../audit/audit.service.js'
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
@@ -214,6 +215,15 @@ export const login = async ({ email, password }, { userAgent, ipAddress } = {}) 
         })
       }
     }
+    // Fire-and-forget — logged even for an unknown email (userId: null) so
+    // the audit trail can surface credential-stuffing attempts, not just
+    // failures against real accounts.
+    auditLog('USER_LOGIN_FAILED', {
+      userId: user?.id ?? null,
+      ipAddress,
+      userAgent,
+      metadata: { email: normalizeEmail(email) },
+    })
     throw httpError('errors.invalidCredentials', 401)
   }
 

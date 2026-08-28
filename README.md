@@ -6,7 +6,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
-[![Tests](https://img.shields.io/badge/tests-444%20passing-brightgreen)](https://github.com/izemhsn/saas-backend-boilerplate/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-492%20passing-brightgreen)](https://github.com/izemhsn/saas-backend-boilerplate/actions/workflows/ci.yml)
 
 A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, Google OAuth, Stripe billing, organizations, role-based access control, rate limiting, background jobs, i18n, and a full integration test suite.
 
@@ -46,7 +46,7 @@ A production-ready Express 5 + Prisma SaaS backend starter with JWT auth, 2FA, G
 | Validation    | Zod 4                                                      |
 | Logging       | Pino + pino-http                                           |
 | Monitoring    | Sentry                                                     |
-| Testing       | Vitest + Supertest (444 integration tests)                 |
+| Testing       | Vitest + Supertest (492 integration tests)                 |
 | Linting       | ESLint 9 + Prettier                                        |
 | Container     | Docker (multi-stage, non-root)                             |
 | CI/CD         | GitHub Actions (verify → build → migrate → deploy)         |
@@ -86,6 +86,8 @@ Start the database and Redis:
 ```bash
 docker compose up -d
 ```
+
+> Prefer everything in Docker with zero local Node install? `docker compose --profile full up -d` instead builds and runs the API and worker in containers too (plus a one-shot migration) — see [Docker Compose (full stack)](#docker-compose-full-stack) below. The steps that follow assume the lighter `docker compose up -d` above, with the app running on the host.
 
 Run migrations and generate the Prisma client:
 
@@ -137,7 +139,7 @@ src/
   app.js           # Express app (middleware chain, rate limiting, routes)
   server.js        # HTTP server + graceful shutdown + env validation
   worker.js        # Background job worker process
-tests/             # Integration tests (28 files, 444 tests)
+tests/             # Integration tests (33 files, 492 tests)
 prisma/            # Schema, migrations, seed script
 ```
 
@@ -437,7 +439,15 @@ docker run -p 3000:3000 --env-file .env saas-backend
 
 ### Docker Compose (full stack)
 
-The included `docker-compose.yml` runs PostgreSQL and Redis for local development. For production, extend it with the app and worker services:
+`docker compose up -d` (no flags) runs only PostgreSQL and Redis — the fast local-dev loop, with the app on the host via `npm run dev` for hot reload. Add `--profile full` to also build and run the API, the worker, and a one-shot migration step, all in containers:
+
+```bash
+docker compose --profile full up -d
+```
+
+This builds the same `production` Docker target the real deploy pipeline publishes, so besides being a zero-local-install quick start it doubles as a local smoke test of that image. The app and worker services in this profile use placeholder secrets defined directly in `docker-compose.yml` — fine for a local spin-up, never for a real deployment.
+
+For an actual production deployment, extend the base file with the _published_ image instead of building locally:
 
 ```yaml
 services:
