@@ -17,6 +17,11 @@ const INVITATION_RETENTION_DAYS = Number(process.env.INVITATION_RETENTION_DAYS ?
 // M8's own dead-letter table (FailedJob) would have the same unbounded-growth
 // problem it exists to fix, so it gets a retention window too.
 const FAILED_JOB_RETENTION_DAYS = Number(process.env.FAILED_JOB_RETENTION_DAYS ?? 90)
+// ProcessedWebhookEvent exists purely to make a redelivered Stripe event a
+// no-op. Stripe retries a failed webhook for up to ~3 days, so a row older
+// than that can never be needed again — 30 days is a wide margin over that
+// window while still bounding what is otherwise the fastest-growing table here.
+const WEBHOOK_EVENT_RETENTION_DAYS = Number(process.env.WEBHOOK_EVENT_RETENTION_DAYS ?? 30)
 
 const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
@@ -93,6 +98,21 @@ export const cleanupFailedJobs = async () => {
   return { deleted: result.count }
 }
 
+// The Stripe webhook idempotency ledger. Only ever written (insert-or-skip in
+// billing.service.js's handleWebhook) and never read back, so nothing depends
+// on a row surviving past Stripe's retry window — see the retention constant
+// above for why 30 days is safe.
+export const cleanupProcessedWebhookEvents = async () => {
+  const result = await prisma.processedWebhookEvent.deleteMany({
+    where: { createdAt: { lt: daysAgo(WEBHOOK_EVENT_RETENTION_DAYS) } },
+  })
+  logger.info(
+    { deleted: result.count, retentionDays: WEBHOOK_EVENT_RETENTION_DAYS },
+    'Old processed webhook events cleaned up',
+  )
+  return { deleted: result.count }
+}
+
 const processMaintenanceJob = async (job) => {
   const { name } = job
 
@@ -111,6 +131,8 @@ const processMaintenanceJob = async (job) => {
       return await cleanupTerminalInvitations()
     case 'cleanupFailedJobs':
       return await cleanupFailedJobs()
+    case 'cleanupProcessedWebhookEvents':
+      return await cleanupProcessedWebhookEvents()
     default:
       logger.warn({ jobId: job.id, jobName: name }, 'Unknown maintenance job type')
   }

@@ -886,6 +886,20 @@ export const operations = [
       ...errors(400, 401, 403),
     },
   },
+  {
+    method: 'GET',
+    path: '/api/integrations/organizations/{orgId}/projects/{projectId}',
+    tag: 'Projects',
+    summary: 'Get a project with an API key',
+    description:
+      'The API-key counterpart of `GET /api/organizations/{orgId}/projects/{projectId}`. Same `projects:read` scope and organization-membership requirements as the list endpoint above. A project belonging to another organization returns 404, not 403 — the lookup is scoped to the tenant.',
+    security: 'apiKey',
+    request: projectIdSchema,
+    responses: {
+      ...ok(z.object({ project: s.project })),
+      ...errors(400, 401, 403, 404),
+    },
+  },
 
   // --- Notifications -----------------------------------------------------
   {

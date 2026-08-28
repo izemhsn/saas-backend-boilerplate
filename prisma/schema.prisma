@@ -245,11 +245,17 @@ model Subscription {
 // retried or resent delivery is a no-op instead of being reprocessed
 // (Stripe's delivery guarantee is at-least-once). Never queried by the app
 // beyond the insert-or-skip check in handleWebhook — see billing.service.js.
+//
+// Insert-only, one row per Stripe event, so it grows without bound on a busy
+// account. The maintenance worker's cleanupProcessedWebhookEvents job prunes
+// it past WEBHOOK_EVENT_RETENTION_DAYS, which is why createdAt is indexed —
+// the job filters on that column alone.
 model ProcessedWebhookEvent {
   id        String   @id
   type      String
   createdAt DateTime @default(now())
 
+  @@index([createdAt])
   @@map("processed_webhook_events")
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "saas-backend-boilerplate",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Production-ready Express 5 + Prisma SaaS backend starter with JWT auth, role-based access, request validation, rate limiting, and a full test suite.",
   "main": "src/server.js",
   "engines": {

@@ -37,6 +37,10 @@ export const authenticate = async (req, res, next) => {
         tokenVersion: true,
         banned: true,
         suspendedUntil: true,
+        // Carried on req.user purely so requireVerifiedEmail below doesn't
+        // have to re-fetch the same row it just read. Free here — it's one
+        // more column on a query that already runs on every request.
+        emailVerified: true,
       },
     })
 
@@ -65,6 +69,7 @@ export const authenticate = async (req, res, next) => {
       email: user.email,
       role: user.role,
       tokenVersion: user.tokenVersion,
+      emailVerified: user.emailVerified,
     }
     next()
   } catch (err) {
@@ -93,6 +98,20 @@ export const requireVerifiedEmail = async (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: req.t('errors.noTokenProvided') })
   }
+
+  // Fast path: `authenticate` already read this user's row a moment ago and
+  // carried emailVerified across, so the guard costs nothing extra on every
+  // request to a verified-email route. The DB fallback below still runs for
+  // callers that populate req.user some other way — authenticateApiKey does
+  // not select emailVerified — so this guard can never reject a request
+  // merely because the field is absent.
+  if (typeof req.user.emailVerified === 'boolean') {
+    if (!req.user.emailVerified) {
+      return res.status(403).json({ success: false, message: req.t('errors.emailNotVerified') })
+    }
+    return next()
+  }
+
   try {
     const user = await prisma.user.findFirst({
       where: { id: req.user.id, deletedAt: null },

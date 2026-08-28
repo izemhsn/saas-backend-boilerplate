@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeString, sanitizeValue } from '../src/middleware/sanitize.middleware.js'
+import express from 'express'
+import request from 'supertest'
+import { z } from 'zod'
+import {
+  sanitizeString,
+  sanitizeValue,
+  sanitizeRequest,
+} from '../src/middleware/sanitize.middleware.js'
+import { validate } from '../src/middleware/validate.middleware.js'
+import { i18nMiddleware } from '../src/middleware/i18n.middleware.js'
 
 describe('sanitizeString', () => {
   it('strips HTML tags', () => {
@@ -129,5 +138,81 @@ describe('sanitizeValue — combined attacks', () => {
     expect(result.name).toBe('document.cookie')
     expect(result.bio).toBe('steal()')
     expect(result.profile.real).toBe('data')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// Regression tests for the middleware itself, driven over real HTTP.
+//
+// Everything above exercises the pure helpers directly, which is exactly why
+// a bug in the middleware's *wiring* went unnoticed: sanitizeRequest mutated
+// `req.query` in place, but Express 5 defines `query` as a getter that
+// re-parses the query string on every access and hands back a fresh object,
+// so the mutation was thrown away and every reader saw raw input. `req.params`
+// had a second, unrelated cause — it is empty until the router matches a
+// route, long after app-level middleware runs, so sanitizing it there was
+// always a no-op.
+//
+// These build a minimal app from the real middleware rather than importing
+// src/app.js, because no production route echoes its own query/params back —
+// the assertion needs a handler that reveals what the pipeline actually
+// produced.
+// ─────────────────────────────────────────────────────────────────────────
+describe('sanitizeRequest — over HTTP', () => {
+  const buildApp = () => {
+    const app = express()
+    app.use(express.json())
+    app.use(sanitizeRequest)
+    app.use(i18nMiddleware)
+
+    const schema = z.object({
+      body: z.object({}).loose().optional(),
+      query: z.object({}).loose(),
+      params: z.object({ id: z.string() }),
+    })
+
+    app.get('/echo/:id', validate(schema), (req, res) => {
+      res.json({ query: req.query, params: req.validated.params })
+    })
+    return app
+  }
+
+  it('strips HTML tags from query string values', async () => {
+    const res = await request(buildApp()).get('/echo/abc').query({ q: '<script>alert(1)</script>' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.query.q).toBe('alert(1)')
+  })
+
+  it('strips $-prefixed and prototype-pollution keys from the query string', async () => {
+    const res = await request(buildApp()).get('/echo/abc?$ne=1&__proto__=polluted&keep=yes')
+
+    expect(res.status).toBe(200)
+    expect(res.body.query.$ne).toBeUndefined()
+    expect(Object.keys(res.body.query)).not.toContain('__proto__')
+    expect(res.body.query.keep).toBe('yes')
+  })
+
+  it('strips HTML tags from route params', async () => {
+    const res = await request(buildApp()).get(
+      `/echo/${encodeURIComponent('<script>hi</script>')}?q=ok`,
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body.params.id).toBe('hi')
+  })
+
+  it('still sanitizes the JSON body', async () => {
+    const app = express()
+    app.use(express.json())
+    app.use(sanitizeRequest)
+    app.use(i18nMiddleware)
+    app.post('/body', (req, res) => res.json({ body: req.body }))
+
+    const res = await request(app).post('/body').send({ name: '<b>bold</b>', $where: 'evil' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.body.name).toBe('bold')
+    expect(res.body.body.$where).toBeUndefined()
   })
 })

@@ -32,6 +32,14 @@ const subscriptionSelect = {
   plan: { select: planSelect },
 }
 
+// Subscription statuses that still represent a live Stripe billing
+// relationship, i.e. a customer who is (or is about to be) charged. Anything
+// that destroys the local record of a subscription in one of these states —
+// account deletion, organization deletion — must cancel it at Stripe first,
+// or the customer keeps being billed for something this API no longer knows
+// about. Shared by gdpr.service.js and org.service.js.
+export const LIVE_SUBSCRIPTION_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE']
+
 const mapStripeStatus = (stripeStatus) => {
   const map = {
     active: 'ACTIVE',

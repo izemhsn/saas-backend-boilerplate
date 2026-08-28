@@ -134,8 +134,9 @@ export const restoreUser = async (userId) => {
   })
   if (!user) throw httpError('errors.deletedUserNotFound', 404)
 
-  // email/googleId/pendingEmail are only unique among live rows (see H8 in
-  // AUDIT.md) — someone may have registered with this user's former email
+  // email/googleId/pendingEmail are only unique among live rows (partial
+  // unique indexes scoped to `deletedAt IS NULL`, see prisma/schema.prisma)
+  // — someone may have registered with this user's former email
   // while they were soft-deleted, which the partial unique index now allows.
   // Restoring would then collide; surface a clear conflict instead of the
   // generic mapped-Prisma-error 409.
