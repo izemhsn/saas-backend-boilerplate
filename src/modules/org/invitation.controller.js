@@ -84,6 +84,19 @@ export const acceptInvitation = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     })
+    // Distinct from INVITATION_ACCEPTED above: that entry is the invitation's
+    // lifecycle record, this one completes the MEMBER_ADDED/REMOVED/ROLE_CHANGED
+    // triad (the other two are already emitted in org.controller.js) so an org's
+    // membership history can be queried by action without also matching
+    // invitation/decline/cancel events that carry no membership change.
+    auditLog('MEMBER_ADDED', {
+      userId: req.user.id,
+      targetUserId: req.user.id,
+      organizationId: data.invitation.organization.id,
+      metadata: { role: data.invitation.role, via: 'invitation' },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
     res.json({ success: true, data: translateResult(req, data) })
   } catch (err) {
     next(err)

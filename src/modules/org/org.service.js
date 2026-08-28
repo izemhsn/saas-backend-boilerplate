@@ -1,7 +1,10 @@
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js'
 import { prisma } from '../../config/db.js'
+import { stripe, isStripeConfigured } from '../../config/stripe.js'
 import { httpError } from '../../utils/httpError.js'
 import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../utils/query.js'
+import { LIVE_SUBSCRIPTION_STATUSES } from '../billing/billing.service.js'
+import logger from '../../utils/logger.js'
 
 const orgSelect = {
   id: true,
@@ -121,6 +124,44 @@ export const updateOrganization = async (orgId, { name, slug }) => {
 }
 
 export const deleteOrganization = async (orgId) => {
+  // An organization can hold its own Stripe subscription (org-scoped billing,
+  // M12). Soft-deleting the org removes it from every API surface —
+  // requireTenant rejects deleted orgs — so leaving the subscription live
+  // would keep charging a customer for something they can no longer see, use,
+  // or even cancel through this API. Cancel first, and fail the request if
+  // Stripe rejects, rather than delete while still billing: the same rule the
+  // hard-delete path in gdpr.service.js follows.
+  //
+  // Deliberately not reversed by POST /:orgId/restore. Cancellation at Stripe
+  // is not something this API can undo, so a restored org starts a fresh
+  // checkout — which is the honest outcome. Billing someone for an
+  // organization they deleted is the worse failure of the two.
+  if (isStripeConfigured()) {
+    const liveSubscriptions = await prisma.subscription.findMany({
+      where: { organizationId: orgId, status: { in: LIVE_SUBSCRIPTION_STATUSES } },
+      select: { id: true, stripeSubscriptionId: true },
+    })
+
+    for (const sub of liveSubscriptions) {
+      try {
+        await stripe.subscriptions.cancel(sub.stripeSubscriptionId)
+      } catch (err) {
+        logger.error(
+          { err, organizationId: orgId, stripeSubscriptionId: sub.stripeSubscriptionId },
+          'Failed to cancel Stripe subscription during organization deletion',
+        )
+        throw httpError('errors.stripeCancellationFailed', 502)
+      }
+    }
+
+    if (liveSubscriptions.length) {
+      await prisma.subscription.updateMany({
+        where: { id: { in: liveSubscriptions.map((sub) => sub.id) } },
+        data: { status: 'CANCELED', canceledAt: new Date() },
+      })
+    }
+  }
+
   await prisma.organization.update({ where: { id: orgId }, data: { deletedAt: new Date() } })
   return { messageKey: 'messages.organizationDeletedSuccessfully' }
 }

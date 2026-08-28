@@ -36,6 +36,21 @@ This boilerplate implements the following security features:
 - **Graceful shutdown** with connection draining
 - **Non-root Docker container** (UID 1000)
 
+## Audit log integrity
+
+`AuditLog` rows (`prisma/schema.prisma`) are ordinary mutable database rows — there is no
+append-only constraint, hash chain, or write-once storage. A database-level attacker
+(a compromised admin credential, a direct DB connection) can alter or delete entries
+without detection by the application. This is a deliberate scope boundary, not an
+oversight: tamper-evidence at the storage layer is a deployment-level concern, not
+something an ORM-backed table can guarantee on its own.
+
+If your deployment requires tamper-evident audit trails (e.g. for compliance), do not
+rely on the `AuditLog` table alone — ship these rows to an external, write-once log
+sink (e.g. a SIEM, or a cloud provider's immutable object storage) as they're written,
+and treat the local table as an operational convenience rather than the system of
+record.
+
 ## Security best practices for deployment
 
 - Generate unique 32+ character JWT secrets (never use the `.env.example` defaults)

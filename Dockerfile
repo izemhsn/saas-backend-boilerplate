@@ -13,18 +13,11 @@ RUN npx prisma generate
 COPY . .
 RUN npm run lint
 
-# --- Test stage ---
-# CI can target this stage with `docker build --target test` after starting
-# postgres + redis via docker-compose. Tests need live DB/Redis so they can't
-# run during a normal build.
-FROM base AS test
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY prisma ./prisma
-RUN npx prisma generate
-COPY . .
-RUN npx prisma migrate deploy && npm test
+# Note: there is deliberately no `test` stage. The test suite needs a live
+# Postgres and Redis, which a `docker build` cannot provide, and CI runs it
+# directly against service containers in .github/workflows/verify.yml. A
+# build stage that duplicated that setup would only drift out of sync with
+# the one that actually gates merges and deploys.
 
 # --- Production stage ---
 FROM base AS production
@@ -33,7 +26,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+# --omit=optional matters as much as --omit=dev here. `prisma` (the CLI) is an
+# *optional peer* of `@prisma/client`, so the lockfile marks it and its whole
+# subtree `devOptional` and `--omit=dev` alone still installs it — dragging
+# @prisma/config, @prisma/dev, deepmerge-ts, fast-uri, hono and valibot into
+# the runtime image along with their advisories, none of which the running app
+# ever loads. Omitting optional deps too removes all of it and halves
+# node_modules (~455MB → ~224MB). The client keeps working because the
+# generated client + engine are copied from the build stage below; only the
+# CLI (needed for `migrate`/`generate`, which run elsewhere) goes away.
+RUN npm ci --omit=dev --omit=optional
 
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/prisma ./prisma

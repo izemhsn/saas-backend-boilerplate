@@ -1,3 +1,5 @@
+import { sanitizeInPlace } from './sanitize.middleware.js'
+
 // Higher-order function: returns a middleware that validates with schema.
 // If validation fails, error messages that look like i18n keys (contain a dot
 // and no spaces) are translated via req.t(); plain-text messages pass through.
@@ -15,6 +17,14 @@ const fieldKey = (path) => {
 }
 
 export const validate = (schema) => (req, res, next) => {
+  // Route params only exist once the router has matched a route, which is
+  // after app-level sanitizeRequest has already run — so this is the first
+  // point in the pipeline where they can be cleaned. Controllers read
+  // `req.validated.params`, which is derived from the sanitized object below.
+  if (req.params && typeof req.params === 'object') {
+    sanitizeInPlace(req.params)
+  }
+
   const result = schema.safeParse({
     body: req.body,
     query: req.query,

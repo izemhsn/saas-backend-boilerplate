@@ -174,6 +174,44 @@ describe('Audit log integration', () => {
     expect(log).not.toBeNull()
   })
 
+  it('logs USER_LOGIN_FAILED on a wrong password', async () => {
+    const { email } = await registerUser('log-login-failed')
+    const user = await prisma.user.findFirst({ where: { email } })
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'WrongPassword123' })
+    expect(res.status).toBe(401)
+
+    const log = await flushAuditLogs(() =>
+      prisma.auditLog.findFirst({ where: { userId: user.id, action: 'USER_LOGIN_FAILED' } }),
+    )
+    expect(log).not.toBeNull()
+  })
+
+  it('logs USER_LOGIN_FAILED with a null userId for an unknown email', async () => {
+    const unknownEmail = emailFor('log-login-failed-unknown')
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: unknownEmail, password: 'WrongPassword123' })
+    expect(res.status).toBe(401)
+
+    const log = await flushAuditLogs(() =>
+      prisma.auditLog.findFirst({
+        where: {
+          userId: null,
+          action: 'USER_LOGIN_FAILED',
+          metadata: { path: ['email'], equals: unknownEmail },
+        },
+      }),
+    )
+    expect(log).not.toBeNull()
+    // userId is null here, so the afterAll cleanup (scoped to createdUserIds)
+    // wouldn't otherwise catch this row.
+    await prisma.auditLog.delete({ where: { id: log.id } })
+  })
+
   it('logs USER_LOGOUT on logout', async () => {
     const { res: registerRes } = await registerUser('log-logout')
     const userId = registerRes.body.data.user.id

@@ -23,20 +23,25 @@ export const errorHandler = (err, req, res, _next) => {
     err.i18n = { key: prismaMapped.key, params: {} }
   }
   const statusCode = err.statusCode ?? 500
-  const isProduction = process.env.NODE_ENV === 'production'
 
   // Resolve the locale from the request (set by i18n middleware) or fall back
   const locale = req.lang ?? DEFAULT_LOCALE
 
-  // Translate the error message if it carries an i18n key; otherwise use the
-  // raw message. 5xx errors are masked in production.
+  // Translate the error message if it carries an i18n key. Errors without one
+  // come from outside our own `httpError()` calls (e.g. body-parser JSON
+  // parse failures, other library-thrown errors) and their raw `.message`
+  // can leak internals (file paths, parser state) — those are masked by a
+  // generic message for every status class outside development, not just 5xx.
   let message
-  if (statusCode >= 500 && isProduction) {
-    message = translate('errors.internalServerError', locale)
-  } else if (err.i18n) {
+  if (err.i18n) {
     message = translate(err.i18n.key, locale, err.i18n.params)
-  } else {
+  } else if (process.env.NODE_ENV === 'development') {
     message = err.message ?? translate('errors.internalServerError', locale)
+  } else {
+    message =
+      statusCode >= 500
+        ? translate('errors.internalServerError', locale)
+        : translate('errors.badRequest', locale)
   }
 
   if (statusCode >= 500) {

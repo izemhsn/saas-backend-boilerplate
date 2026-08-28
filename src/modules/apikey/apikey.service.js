@@ -6,6 +6,13 @@ import { paginationParams, paginationMeta, parseSort, buildSearch } from '../../
 const KEY_PREFIX = 'sk_'
 const KEY_BYTES = 32
 
+// `lastUsedAt` is a "last seen" timestamp for humans reading the key list —
+// nothing authorizes off it. Writing it on literally every authenticated
+// request turned every API read into a read plus a write; refreshing it at
+// most once a minute per key keeps the display useful while cutting that
+// write volume by orders of magnitude on any busy integration.
+const LAST_USED_REFRESH_MS = 60 * 1000
+
 const keySelect = {
   id: true,
   name: true,
@@ -139,6 +146,7 @@ export const verifyApiKey = async (rawKey) => {
       scopes: true,
       expiresAt: true,
       revokedAt: true,
+      lastUsedAt: true,
       user: {
         select: {
           id: true,
@@ -159,10 +167,18 @@ export const verifyApiKey = async (rawKey) => {
   if (apiKey.user.deletedAt) return null
   if (apiKey.user.suspendedUntil && apiKey.user.suspendedUntil > new Date()) return null
 
-  // Update lastUsedAt (fire-and-forget, don't block the request)
-  prisma.apiKey
-    .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
-    .catch(() => {})
+  // Refresh lastUsedAt at most once per LAST_USED_REFRESH_MS (fire-and-forget,
+  // never blocks the request). With several API replicas each keeps its own
+  // view of the row it just read, so the worst case is one write per replica
+  // per window instead of one per request — still a reduction of orders of
+  // magnitude, and this column carries no authorization meaning.
+  const stale =
+    !apiKey.lastUsedAt || Date.now() - apiKey.lastUsedAt.getTime() >= LAST_USED_REFRESH_MS
+  if (stale) {
+    prisma.apiKey
+      .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
+      .catch(() => {})
+  }
 
   return {
     id: apiKey.id,
